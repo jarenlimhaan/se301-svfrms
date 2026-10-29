@@ -1,0 +1,62 @@
+package org.example.report;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Date;
+import java.util.List;
+import org.example.alert.Alert;
+import org.example.alert.AlertService;
+import org.example.resource.ResourceMeter;
+
+/** End-of-run operations: archiving alerts, printing the daily report and saving the archive file. */
+public final class ReportService {
+    private final AlertService alerts;
+    private final ResourceMeter meter;
+    private final ChamberSummaryTracker summaries;
+    private final List<String> activity = Collections.synchronizedList(new ArrayList<>());
+
+    public ReportService(AlertService alerts, ResourceMeter meter, ChamberSummaryTracker summaries) {
+        this.alerts = alerts;
+        this.meter = meter;
+        this.summaries = summaries;
+    }
+
+    public void archiveAlerts() {
+        int moved = alerts.archiveActive().size();
+        if (moved > 0) {
+            activity.add("Archived " + moved + " alerts");
+            System.out.println("Archiving alerts... " + moved + " moved to archive.");
+        } else {
+            activity.add("No alerts to archive");
+            System.out.println("Archiving alerts... no active alerts to archive.");
+        }
+    }
+
+    public void generateDailyReport() {
+        new DailyReport().render(snapshot()).forEach(System.out::println);
+        activity.add("Daily Report");
+    }
+
+    public void saveArchiveReport(Path file) {
+        try {
+            Files.createDirectories(file.toAbsolutePath().getParent());
+            Files.write(file, new ArchiveReport().render(snapshot()), StandardCharsets.UTF_8);
+            System.out.println("Archive report saved to: " + file.toAbsolutePath());
+        } catch (IOException e) {
+            System.out.println("Could not save archive report: " + e.getMessage());
+        }
+    }
+
+    private FacilitySnapshot snapshot() {
+        List<String> activityCopy;
+        synchronized (activity) {
+            activityCopy = List.copyOf(activity);
+        }
+        return new FacilitySnapshot(new Date(), alerts.generatedCount(), alerts.activeCount(), meter.water(),
+                meter.energy(), activityCopy, summaries.lines(), alerts.archived().stream().map(Alert::message).toList());
+    }
+}

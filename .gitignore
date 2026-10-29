@@ -1,0 +1,10 @@
+target/
+archive/
+submission/
+*.zip
+SE301-Project-Specification.pdf
+.DS_Store
+__MACOSX/
+.idea/
+.vscode/
+*.iml
