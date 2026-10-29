@@ -11,7 +11,7 @@ a single 393-line Java class (`legacy/SVFRMS.java`), into a multi-package, threa
 costs, device effects, console output formats and the `archive/daily_report.txt` layout must stay
 identical to the legacy version.
 
-The spec PDF is not in the repo (it is classified Restricted). Get it from eLearn. Its key points:
+The full brief is `SE301-Project-Specification.pdf` (classified Restricted, so it must stay in this private repo). Its key points:
 - §4.1 No single-file solution. §4.2 SOLID. §4.3 Design patterns, with a justification for each.
 - §4.4 Fix race conditions, synchronisation issues and deadlocks.
 - §4.5 Add or remove crops with minimal code change (Kale, Bell Pepper, Bok Choy and Eggplant are done).
@@ -29,6 +29,7 @@ The spec PDF is not in the repo (it is classified Restricted). Get it from eLear
 | `.../device` | `Device` strategies, `ControlDispatcher` (bounded queue + worker + poison pill) |
 | `.../alert`, `.../report`, `.../resource`, `.../simulation` | Alerts (Observer), reports, water/energy meter, chamber threads |
 | `src/test/java/org/example/SVFRMSTest.java` | 6 JUnit tests: behaviour parity, new crops, concurrency |
+| `SE301-Project-Specification.pdf` | The assignment brief: requirements, deliverables and rubric. |
 | `legacy/SVFRMS.java` | The original code. **Read-only reference**: use it to check behaviour parity. |
 | `README.md` → `README.pdf` | Technical report. Edit the `.md` file, then regenerate the PDF. |
 | `run.jar` | Submission jar (copy of `target/run.jar`). |
@@ -60,7 +61,7 @@ Always run `mvn clean package` and confirm **all tests pass** before committing.
    short Javadoc on public types. To add a crop, edit only `CropCatalog`.
 5. **Keep the report in sync.** If code changes affect anything described in `README.md`, update
    it and regenerate `README.pdf` (3–6 pages excluding the cover; diagrams must render as images).
-6. **Never commit** `target/`, `archive/`, `submission/`, zips or the spec PDF.
+6. **Never commit** `target/`, `archive/`, `submission/` or zips.
 7. **Honor code.** This repo is private. Never share code or the report outside Group 6.
 
 ## Status (29 Oct 2026)
