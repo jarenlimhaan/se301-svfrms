@@ -24,6 +24,7 @@ public final class CropCatalog {
                         .temperature(22, 28).humidity(60, 80).soilMoisture(45, 60)
                         .cost(TEMPERATURE, HIGH, ENERGY, 10).cost(TEMPERATURE, LOW, ENERGY, 15)
                         .cost(HUMIDITY, LOW, WATER, 20).cost(SOIL_MOISTURE, LOW, WATER, 50)
+                        .ignoreBreach(SOIL_MOISTURE, HIGH) // legacy only checked Tomato's soil minimum
                         .build(),
                 CropProfile.builder("Strawberry")
                         .temperature(18, 24).humidity(70, 85)

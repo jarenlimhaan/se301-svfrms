@@ -4,22 +4,25 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Date;
 import java.util.List;
 import org.example.alert.Alert;
-import org.example.alert.AlertService;
-import org.example.resource.ResourceMeter;
+import org.example.alert.AlertLedger;
+import org.example.resource.UsageTotals;
 
-/** End-of-run operations: archiving alerts, printing the daily report and saving the archive file. */
+/**
+ * Facade for end-of-run reporting: archiving alerts, printing the daily report and saving the archive
+ * file. Callers make three calls instead of coordinating alerts, usage totals, summaries and reports.
+ */
 public final class ReportService {
-    private final AlertService alerts;
-    private final ResourceMeter meter;
-    private final ChamberSummaryTracker summaries;
+    private final AlertLedger alerts;
+    private final UsageTotals meter;
+    private final ChamberSummaries summaries;
     private final List<String> activity = Collections.synchronizedList(new ArrayList<>());
 
-    public ReportService(AlertService alerts, ResourceMeter meter, ChamberSummaryTracker summaries) {
+    public ReportService(AlertLedger alerts, UsageTotals meter, ChamberSummaries summaries) {
         this.alerts = alerts;
         this.meter = meter;
         this.summaries = summaries;
@@ -41,14 +44,15 @@ public final class ReportService {
         activity.add("Daily Report");
     }
 
-    public void saveArchiveReport(Path file) {
-        try {
-            Files.createDirectories(file.toAbsolutePath().getParent());
-            Files.write(file, new ArchiveReport().render(snapshot()), StandardCharsets.UTF_8);
-            System.out.println("Archive report saved to: " + file.toAbsolutePath());
-        } catch (IOException e) {
-            System.out.println("Could not save archive report: " + e.getMessage());
-        }
+    /**
+     * Writes the archive report to {@code file}, creating its directory if needed.
+     *
+     * @throws IOException if the report could not be written; the caller decides how to fail
+     */
+    public void saveArchiveReport(Path file) throws IOException {
+        Files.createDirectories(file.toAbsolutePath().getParent());
+        Files.write(file, new ArchiveReport().render(snapshot()), StandardCharsets.UTF_8);
+        System.out.println("Archive report saved to: " + file.toAbsolutePath());
     }
 
     private FacilitySnapshot snapshot() {
@@ -56,7 +60,7 @@ public final class ReportService {
         synchronized (activity) {
             activityCopy = List.copyOf(activity);
         }
-        return new FacilitySnapshot(new Date(), alerts.generatedCount(), alerts.activeCount(), meter.water(),
+        return new FacilitySnapshot(Instant.now(), alerts.generatedCount(), alerts.activeCount(), meter.water(),
                 meter.energy(), activityCopy, summaries.lines(), alerts.archived().stream().map(Alert::message).toList());
     }
 }

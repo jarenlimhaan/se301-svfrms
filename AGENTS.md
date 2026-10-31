@@ -22,16 +22,18 @@ The full brief is `SE301-Project-Specification.pdf`. Its key points:
 
 | Path | What |
 |---|---|
-| `src/main/java/org/example/` | Refactored code. `SVFRMS.java` is the composition root and the only place that wires concrete classes. |
-| `.../crop` | `CropProfile` (Builder), `Range`, `CropRegistry`, `CropCatalog` (to add a crop, add one entry here) |
-| `.../sensor` | `SensorType`, `ChamberState`, `ChamberRegistry`, `SensorLog` |
-| `.../monitoring` | `SensorProcessor` (the single breach rule), `ResponsePolicy` |
-| `.../device` | `Device` strategies, `ControlDispatcher` (bounded queue + worker + poison pill) |
-| `.../alert`, `.../report`, `.../resource`, `.../simulation` | Alerts (Observer), reports, water/energy meter, chamber threads |
-| `src/test/java/org/example/SVFRMSTest.java` | 6 JUnit tests: behaviour parity, new crops, concurrency |
+| `src/main/java/org/example/` | Refactored code. `SVFRMS.run` (+ `CommandLine`) is the composition root and the only place that wires concrete classes. |
+| `.../crop` | `CropProfile` (Builder), `Range`, `CropRegistry`, `CropCatalog` (to add a crop, add one entry here), `CropSpecParser` (crops from the command line) |
+| `.../sensor` | `SensorType` (every per-sensor loop iterates it), `ChamberState` (versioned readings, atomic `adjustChecked`), `ChamberRegistry`, `SensorLog` |
+| `.../monitoring` | `SensorProcessor` (the single breach rule, Sensor Failure), `ResponsePolicy` (must cover every sensor and direction; severities) |
+| `.../device` | `ControlDispatcher` (worker lifecycle), `ClosableBoundedQueue` (Lock/Condition, close/abort), `RequestExecutor`, `DeviceRequest` (Command), `Devices` |
+| `.../alert`, `.../report`, `.../resource`, `.../simulation`, `.../support` | Alerts (Observer, severity), reports (Facade, Strategy), water/energy meter, chamber tasks (`ReadingSource` strategy), `Listeners` (fault-isolated notification) |
+| `src/test/java/org/example/` | 66 JUnit tests in 15 classes: parity, every crop bound, validation, concurrency (`DispatcherConcurrencyTest`, `ClosableBoundedQueueTest`), shutdown, run-time crops, severity, exit codes, and `ArchitectureTest` (DIP check) |
+| `tools/build_readme_pdf.py` | Regenerates `README.pdf` (cover + content, Mermaid as vector) from `README.md`. Needs Python `markdown`, `playwright` and `mmdc`. |
 | `SE301-Project-Specification.pdf` | The assignment brief: requirements, deliverables and rubric. |
 | `legacy/SVFRMS.java` | The original code. **Read-only reference**: use it to check behaviour parity. |
-| `README.md` → `README.pdf` | Technical report. Edit the `.md` file, then regenerate the PDF. |
+| `legacy/LegacyHangDemo.java` | Reproduces legacy hang C7 without editing the legacy code: `javac -d target/legacy legacy/SVFRMS.java legacy/LegacyHangDemo.java`, then `java -cp target/legacy org.example.LegacyHangDemo`. Not part of the Maven build. |
+| `README.md` → `README.pdf` | Technical report. Edit the `.md` file, then regenerate the PDF and check it is 3–6 pages plus the cover. |
 | `run.jar` | Submission jar (copy of `target/run.jar`). |
 
 ## Build, test, run
@@ -43,6 +45,8 @@ mvn clean package                  # compile, run tests, build target/run.jar
 cp target/run.jar run.jar          # refresh the submission jar
 java -jar run.jar                  # legacy 4 chambers (CH1 Tomato, CH2 Strawberry, CH3 Lettuce, CH4 Chili)
 java -jar run.jar CH5=Kale         # new-crop demo
+java -jar run.jar --add-crop="Okra:temperature=24..30" CH5=Okra   # crop defined at run time
+java -jar run.jar --alert-format=severity                       # alerts with severity
 ```
 
 Always run `mvn clean package` and confirm **all tests pass** before committing.
@@ -64,23 +68,23 @@ Always run `mvn clean package` and confirm **all tests pass** before committing.
 6. **Never commit** `target/`, `archive/`, `submission/` or zips.
 7. **Honor code.** Do not discuss or exchange solutions with other teams.
 
-## Status (29 Oct 2026)
+## Status (31 Oct 2026)
 
-- ✅ Refactor done and verified against the legacy version (same output formats; 0 errors in 70 runs vs. 11 crashes in 30 legacy runs)
-- ✅ `README.pdf` is final, with the Group 6 cover
-- ✅ The submission zip was built and tested (it is not in the repo; rebuild it from `src/`, `run.jar`, `README.pdf` and `pom.xml`)
-- ⬜ Optional: rebuild `run.jar` on JDK 25 so it matches `pom.xml` (the current jar is Java 21 bytecode and runs fine on 25)
+- ✅ Review findings 1–9 fixed; strict rubric pass done (DIP/ISP role interfaces, LSP analysis, Lock/Condition queue, severity, Sensor Failure incl. unresponsive sensors, run-time crops, exit codes)
+- ✅ Verified against legacy: same output line formats over 25 runs each; 150-run defect comparison is in README §2.3
+- ✅ `README.md` rewritten and `README.pdf` regenerated (cover + 5 pages)
+- ⬜ Run `mvn clean package` on JDK 25 (tests were last run with a JUnit stand-in on JDK 21), then `cp target/run.jar run.jar`
 - ⬜ **Presentation slides** for 2 Nov: 5 minutes plus a 2-minute demo covering legacy issues, SOLID and the refactor, a new-crop demo,
   the concurrency fixes, and evidence of maintainability and reliability
-- ⬜ One member submits the zip on eLearn before the deadline
+- ⬜ Commit, then one member submits the zip on eLearn before the deadline
 
 ## Building the submission zip
 
 Use forward-slash paths (PowerShell 5.1 `Compress-Archive` writes backslashes, which break on macOS and Linux):
 
 ```bash
-C:/Windows/System32/tar.exe -a -c -f SVFRMS-submission.zip src run.jar README.pdf pom.xml   # Windows
-zip -r SVFRMS-submission.zip src run.jar README.pdf pom.xml                                # macOS/Linux
+C:/Windows/System32/tar.exe -a -c -f SVFRMS-submission.zip src legacy run.jar README.pdf pom.xml   # Windows
+zip -r SVFRMS-submission.zip src legacy run.jar README.pdf pom.xml                                # macOS/Linux
 ```
 
-Then unzip a fresh copy and run `java -jar run.jar` from it before uploading.
+`legacy/` is included because README §2.3 cites `legacy/LegacyHangDemo.java`. Then unzip a fresh copy and run `java -jar run.jar` from it before uploading.

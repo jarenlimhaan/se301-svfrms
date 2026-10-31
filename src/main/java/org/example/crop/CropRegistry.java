@@ -7,7 +7,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 /** The crops the facility knows about. Crops can be added or removed at runtime. */
-public final class CropRegistry {
+public final class CropRegistry implements CropLookup {
     private final ConcurrentMap<String, CropProfile> profiles = new ConcurrentHashMap<>();
 
     public void register(CropProfile profile) {
@@ -18,6 +18,7 @@ public final class CropRegistry {
         profiles.remove(cropName);
     }
 
+    @Override
     public Optional<CropProfile> find(String cropName) {
         return Optional.ofNullable(profiles.get(cropName));
     }
