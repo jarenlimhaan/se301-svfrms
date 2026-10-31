@@ -128,6 +128,24 @@ class ControlDispatcherLifecycleTest {
 
             IllegalStateException e = assertThrows(IllegalStateException.class, dispatcher::close);
             assertTrue(e.getMessage().contains("did not finish"), e.getMessage());
+            IllegalStateException repeated = assertThrows(IllegalStateException.class, dispatcher::close);
+            assertEquals(e.getMessage(), repeated.getMessage());
+        });
+    }
+
+    @Test
+    void listenerErrorDoesNotCountAnExecutedRequestAsLost() {
+        assertTimeoutPreemptively(LIMIT, () -> {
+            ControlDispatcher dispatcher = new ControlDispatcher(chambers, 1,
+                    List.of((chamber, device, effect) -> { throw new AssertionError("boom"); }),
+                    Duration.ofSeconds(30));
+            dispatcher.start();
+            dispatcher.request("CH1", Devices.GROW_LIGHT);
+
+            IllegalStateException e = assertThrows(IllegalStateException.class, dispatcher::close);
+            assertTrue(e.getMessage().contains("0 queued"), e.getMessage());
+            assertEquals(1, dispatcher.stats().executed());
+            assertTrue(e.getCause() instanceof AssertionError);
         });
     }
 

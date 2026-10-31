@@ -18,8 +18,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Pins the console and archive formats (the legacy output contract) for a scripted Tomato chamber
- * that breaches every bound with a device. Numbers are masked as {@code N}, as in
- * {@code tools/compare_legacy.sh}, because device effects depend on how the threads interleave.
+ * that breaches every bound with a device. Only device-effect readings are masked because their
+ * final values depend on how sensor and control threads interleave; all totals are exact.
  */
 class GoldenOutputTest {
     @TempDir
@@ -28,8 +28,11 @@ class GoldenOutputTest {
     private static final Map<SensorType, Double> READINGS = Map.of(SensorType.TEMPERATURE, 30.0,
             SensorType.HUMIDITY, 50.0, SensorType.SOIL_MOISTURE, 40.0, SensorType.LIGHT, 400.0, SensorType.NUTRIENT, 30.0);
 
-    private static String mask(String line) {
-        return line.replaceAll("[0-9]+(\\.[0-9]+)?", "N");
+    private static String normalizeConsole(String line) {
+        if (line.contains("reduced to ") || line.contains("increased to ")) {
+            return line.replaceAll("(?<=to )-?[0-9]+(\\.[0-9]+)?", "N");
+        }
+        return line.replaceAll("saved to: .*", "saved to: PATH");
     }
 
     @Test
@@ -48,56 +51,55 @@ class GoldenOutputTest {
         assertEquals(SVFRMS.EXIT_OK, status);
 
         TreeSet<String> console = new TreeSet<>();
-        captured.toString(StandardCharsets.UTF_8).lines().map(GoldenOutputTest::mask)
-                .map(l -> l.replaceAll("saved to: .*", "saved to: PATH")).forEach(console::add);
+        captured.toString(StandardCharsets.UTF_8).lines().map(GoldenOutputTest::normalizeConsole).forEach(console::add);
         assertEquals(new TreeSet<>(CONSOLE), console);
 
         List<String> archive = Files.readAllLines(report, StandardCharsets.UTF_8).stream()
-                .map(l -> l.startsWith("Timestamp: ") ? "Timestamp: T" : mask(l)).distinct().toList();
+                .map(l -> l.startsWith("Timestamp: ") ? "Timestamp: T" : l).distinct().toList();
         assertEquals(ARCHIVE, archive);
     }
 
     private static final List<String> CONSOLE = List.of(
-            "[CHN][Tomato][ALERT] CHN Tomato High Temp",
-            "[CHN][Tomato][ALERT] CHN Tomato Low Humidity",
-            "[CHN][Tomato][ALERT] CHN Tomato Low Soil Moisture",
-            "[CHN][Tomato][ALERT] CHN Low Light Level",
-            "[CHN][Tomato][ALERT] CHN Low Nutrient Level",
-            "\t\u001B[Nm[CHN][CONTROL] Cooling Fan Activated\u001B[Nm",
-            "\t\u001B[Nm[CHN][CONTROL] Temperature reduced to NC\u001B[Nm",
-            "\t\u001B[Nm[CHN][CONTROL] Humidifier Activated\u001B[Nm",
-            "\t\u001B[Nm[CHN][CONTROL] Humidity increased to N%\u001B[Nm",
-            "\t\u001B[Nm[CHN][CONTROL] Water Pump Activated\u001B[Nm",
-            "\t\u001B[Nm[CHN][CONTROL] Soil moisture increased to N%\u001B[Nm",
-            "\t\u001B[Nm[CHN][CONTROL] Grow Light Activated\u001B[Nm",
-            "\t\u001B[Nm[CHN][CONTROL] Light level increased to N lux\u001B[Nm",
-            "\t\u001B[Nm[CHN][CONTROL] Nutrient Injector Activated\u001B[Nm",
-            "\t\u001B[Nm[CHN][CONTROL] Nutrient level increased to N%\u001B[Nm",
-            "Archiving alerts... N moved to archive.",
+            "[CH1][Tomato][ALERT] CH1 Tomato High Temp",
+            "[CH1][Tomato][ALERT] CH1 Tomato Low Humidity",
+            "[CH1][Tomato][ALERT] CH1 Tomato Low Soil Moisture",
+            "[CH1][Tomato][ALERT] CH1 Low Light Level",
+            "[CH1][Tomato][ALERT] CH1 Low Nutrient Level",
+            "\t\u001B[32m[CH1][CONTROL] Cooling Fan Activated\u001B[0m",
+            "\t\u001B[32m[CH1][CONTROL] Temperature reduced to NC\u001B[0m",
+            "\t\u001B[32m[CH1][CONTROL] Humidifier Activated\u001B[0m",
+            "\t\u001B[32m[CH1][CONTROL] Humidity increased to N%\u001B[0m",
+            "\t\u001B[32m[CH1][CONTROL] Water Pump Activated\u001B[0m",
+            "\t\u001B[32m[CH1][CONTROL] Soil moisture increased to N%\u001B[0m",
+            "\t\u001B[32m[CH1][CONTROL] Grow Light Activated\u001B[0m",
+            "\t\u001B[32m[CH1][CONTROL] Light level increased to N lux\u001B[0m",
+            "\t\u001B[32m[CH1][CONTROL] Nutrient Injector Activated\u001B[0m",
+            "\t\u001B[32m[CH1][CONTROL] Nutrient level increased to N%\u001B[0m",
+            "Archiving alerts... 100 moved to archive.",
             "===== DAILY REPORT =====",
-            "Generated Alerts: N",
-            "Active Alerts: N",
-            "Water Usage: N L",
-            "Energy Usage: N kWh",
+            "Generated Alerts: 100",
+            "Active Alerts: 0",
+            "Water Usage: 1440 L",
+            "Energy Usage: 220 kWh",
             "System finished sensor processing.",
             "Archive report saved to: PATH");
     private static final List<String> ARCHIVE = List.of(
             "===== DAILY REPORT =====",
             "Timestamp: T",
-            "Generated Alerts: N",
-            "Active Alerts: N",
-            "Water Usage: N L",
-            "Energy Usage: N kWh",
-            "Archived alerts: N",
+            "Generated Alerts: 100",
+            "Active Alerts: 0",
+            "Water Usage: 1440 L",
+            "Energy Usage: 220 kWh",
+            "Archived alerts: 100",
             "---",
-            "Archived N alerts",
+            "Archived 100 alerts",
             "Daily Report",
             "--- chamber wise summary ---",
-            "CHN -> Alerts=N, Actions=N, Last Action=Nutrient Injector Activated, Last Alert=CHN Low Nutrient Level",
+            "CH1 -> Alerts=100, Actions=100, Last Action=Nutrient Injector Activated, Last Alert=CH1 Low Nutrient Level",
             "--- archived alerts ---",
-            "CHN Tomato High Temp",
-            "CHN Tomato Low Humidity",
-            "CHN Tomato Low Soil Moisture",
-            "CHN Low Light Level",
-            "CHN Low Nutrient Level");
+            "CH1 Tomato High Temp",
+            "CH1 Tomato Low Humidity",
+            "CH1 Tomato Low Soil Moisture",
+            "CH1 Low Light Level",
+            "CH1 Low Nutrient Level");
 }

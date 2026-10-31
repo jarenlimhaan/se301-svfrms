@@ -3,6 +3,7 @@ package org.example.device;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CountDownLatch;
 import org.example.sensor.ChamberControls;
 
 /**
@@ -31,8 +32,11 @@ public final class ControlDispatcher implements DeviceController, AutoCloseable 
     private volatile State state = State.NEW;
     /** Why the worker stopped before the queue was closed and drained, or {@code null}. */
     private volatile Throwable workerFailure;
-    /** 1 if an Error killed the worker while it was executing a request (that request did not complete). */
+    /** 1 if a device Error killed the worker before its request completed. */
     private volatile int lostInFlight;
+    private final CountDownLatch closeFinished = new CountDownLatch(1);
+    /** The first close outcome is retained so every later close reports the same failure. */
+    private volatile IllegalStateException closeFailure;
 
     public ControlDispatcher(ChamberControls chambers, int capacity, List<DeviceListener> listeners,
                              Duration shutdownTimeout) {
@@ -71,13 +75,19 @@ public final class ControlDispatcher implements DeviceController, AutoCloseable 
     private void runWorker() {
         try {
             for (DeviceRequest request = queue.take(); request != null; request = queue.take()) {
-                executor.execute(request);
+                int completedBefore = executor.stats().executed();
+                try {
+                    executor.execute(request);
+                } catch (Throwable t) {
+                    // A listener Error escapes after the device completed; only a device Error loses the request.
+                    lostInFlight = executor.stats().executed() == completedBefore ? 1 : 0;
+                    throw t;
+                }
             }
         } catch (InterruptedException e) {
             fail(e);
             Thread.currentThread().interrupt();
-        } catch (Throwable t) { // an Error escaping a device: record it rather than dying silently
-            lostInFlight = 1;
+        } catch (Throwable t) { // record an escaping Error rather than dying silently
             fail(t);
         }
     }
@@ -105,13 +115,12 @@ public final class ControlDispatcher implements DeviceController, AutoCloseable 
         }
         if (previous == State.NEW) {
             queue.close(); // never started: later requests are rejected, not queued for nobody
+            closeFinished.countDown();
             return;
         }
         if (previous != State.RUNNING) { // another thread is closing (or has closed): wait for its drain
-            awaitWorker(shutdownTimeout);
-            if (worker.isAlive() || workerFailure != null) {
-                throw new IllegalStateException("control worker did not stop cleanly (see the first close())", workerFailure);
-            }
+            awaitClose();
+            if (closeFailure != null) throw closeFailure;
             return;
         }
         try {
@@ -129,8 +138,21 @@ public final class ControlDispatcher implements DeviceController, AutoCloseable 
                 throw new IllegalStateException("control worker stopped abnormally; " + notExecuted
                         + " queued device request(s) were not executed", workerFailure);
             }
+        } catch (IllegalStateException e) {
+            closeFailure = e;
+            throw e;
         } finally {
             state = State.TERMINATED;
+            closeFinished.countDown();
+        }
+    }
+
+    private void awaitClose() {
+        try {
+            closeFinished.await();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("interrupted while waiting for dispatcher shutdown", e);
         }
     }
 
