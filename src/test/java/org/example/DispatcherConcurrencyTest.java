@@ -28,7 +28,7 @@ class DispatcherConcurrencyTest {
     @Test
     void deviceCodeRunsWithNoChamberLockHeld() throws Exception {
         ChamberRegistry chambers = new ChamberRegistry();
-        ChamberState state = chambers.state("CH1");
+        ChamberControl state = chambers.control("CH1"); // the chamber's ChamberState
         AtomicBoolean lockHeld = new AtomicBoolean(true);
         Device probe = new Device() {
             @Override public String name() { return "Probe"; }

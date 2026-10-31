@@ -67,6 +67,6 @@ class ListenerIsolationTest {
         assertTrue(tracker.lines().getFirst().contains("Actions=3"), tracker.lines().toString());
         assertEquals(3, dispatcher.stats().listenerFailures());
         assertEquals(0, dispatcher.stats().failed(), "the devices themselves worked");
-        assertEquals(1000.0, chambers.state("CH1").get(SensorType.LIGHT));
+        assertEquals(1000.0, Chambers.read(chambers.control("CH1"), SensorType.LIGHT));
     }
 }

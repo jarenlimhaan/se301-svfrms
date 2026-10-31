@@ -71,7 +71,7 @@ class ValidationTest {
         assertThrows(IllegalArgumentException.class, () -> state.set(SensorType.TEMPERATURE, Double.NaN));
         assertThrows(IllegalArgumentException.class, () -> state.set(SensorType.HUMIDITY, 101));
         assertThrows(IllegalArgumentException.class, () -> state.adjust(SensorType.LIGHT, Double.POSITIVE_INFINITY, 1000));
-        assertEquals(24.0, state.get(SensorType.TEMPERATURE));
+        assertEquals(24.0, Chambers.read(state, SensorType.TEMPERATURE));
     }
 
     @Test
@@ -85,8 +85,9 @@ class ValidationTest {
                 "CH1 Sensor Failure: invalid Humidity reading 150.0",
                 "CH1 Sensor Failure: invalid Light reading -5.0",
                 "CH1 Sensor Failure: invalid Soil reading Infinity"), alertMessages());
-        ChamberState state = chambers.state("CH1");
-        for (SensorType sensor : SensorType.values()) assertEquals(sensor.initialValue(), state.get(sensor));
+        for (SensorType sensor : SensorType.values()) {
+            assertEquals(sensor.initialValue(), Chambers.read(chambers.control("CH1"), sensor));
+        }
         assertTrue(requested.isEmpty(), "an invalid reading never triggers a device");
         assertEquals(0, meter.water() + meter.energy(), "and never costs resources");
     }

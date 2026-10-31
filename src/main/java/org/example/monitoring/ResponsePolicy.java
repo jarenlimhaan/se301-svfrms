@@ -14,6 +14,7 @@ import static org.example.sensor.SensorType.TEMPERATURE;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.example.device.Devices;
 import org.example.sensor.Breach;
 import org.example.sensor.Direction;
@@ -47,15 +48,15 @@ public final class ResponsePolicy {
     public static ResponsePolicy standard() {
         return new ResponsePolicy(Map.of(
                 new Breach(TEMPERATURE, HIGH), new Response("High Temp", CRITICAL, true, Devices.COOLING_FAN),
-                new Breach(TEMPERATURE, LOW), new Response("Low Temp", CRITICAL, true, null),
+                new Breach(TEMPERATURE, LOW), new Response("Low Temp", CRITICAL, true, Optional.empty()),
                 new Breach(HUMIDITY, HIGH), new Response("High Humidity", WARNING, true, Devices.DEHUMIDIFIER),
                 new Breach(HUMIDITY, LOW), new Response("Low Humidity", WARNING, true, Devices.HUMIDIFIER),
-                new Breach(SOIL_MOISTURE, HIGH), new Response("High Soil Moisture", WARNING, true, null),
+                new Breach(SOIL_MOISTURE, HIGH), new Response("High Soil Moisture", WARNING, true, Optional.empty()),
                 new Breach(SOIL_MOISTURE, LOW), new Response("Low Soil Moisture", WARNING, true, Devices.WATER_PUMP),
                 // Light and nutrient have no default maximum, so these fire only for crops that set one.
-                new Breach(LIGHT, HIGH), new Response("High Light Level", INFO, false, null),
+                new Breach(LIGHT, HIGH), new Response("High Light Level", INFO, false, Optional.empty()),
                 new Breach(LIGHT, LOW), new Response("Low Light Level", INFO, false, Devices.GROW_LIGHT),
-                new Breach(NUTRIENT, HIGH), new Response("High Nutrient Level", WARNING, false, null),
+                new Breach(NUTRIENT, HIGH), new Response("High Nutrient Level", WARNING, false, Optional.empty()),
                 new Breach(NUTRIENT, LOW), new Response("Low Nutrient Level", WARNING, false, Devices.NUTRIENT_INJECTOR)));
     }
 

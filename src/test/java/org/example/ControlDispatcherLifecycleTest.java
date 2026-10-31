@@ -17,7 +17,6 @@ import org.example.device.Devices;
 import org.example.report.ChamberSummaryTracker;
 import org.example.sensor.ChamberRegistry;
 import org.example.sensor.ChamberControl;
-import org.example.sensor.ChamberState;
 import org.junit.jupiter.api.Test;
 
 /** Finding 2: the dispatcher never hangs, and reports abnormal termination instead of hiding it. */

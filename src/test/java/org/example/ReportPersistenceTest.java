@@ -28,7 +28,7 @@ class ReportPersistenceTest {
         AlertService alerts = new AlertService(List.of());
         alerts.raise(new Alert("CH1", "Tomato", "CH1 Tomato High Temp", Severity.WARNING));
         ReportService reports = new ReportService(alerts, new ResourceMeter(), new ChamberSummaryTracker(), new DailyReport(),
-                new ArchiveReport());
+                new ArchiveReport(), System.out::println);
         reports.archiveAlerts();
         return reports;
     }

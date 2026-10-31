@@ -83,7 +83,7 @@ class SensorExtensibilityTest {
             assertEquals("CH1 Sensor Failure: no Humidity reading", alert.message());
             assertEquals(Severity.CRITICAL, alert.severity());
         }
-        assertEquals(SensorType.HUMIDITY.initialValue(), chambers.state("CH1").get(SensorType.HUMIDITY));
+        assertEquals(SensorType.HUMIDITY.initialValue(), Chambers.read(chambers.control("CH1"), SensorType.HUMIDITY));
         assertTrue(devices.isEmpty());
     }
 

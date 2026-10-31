@@ -8,7 +8,9 @@ import static org.example.sensor.SensorType.HUMIDITY;
 import static org.example.sensor.SensorType.SOIL_MOISTURE;
 import static org.example.sensor.SensorType.TEMPERATURE;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * The facility's crop profiles. Adding a crop is one new entry here; removing a crop is deleting
@@ -41,6 +43,16 @@ public final class CropCatalog {
                 CropProfile.builder("Bell Pepper").temperature(21, 29).humidity(60, 75).soilMoisture(50, 70).build(),
                 CropProfile.builder("Bok Choy").temperature(15, 22).humidity(60, 80).soilMoisture(55, 75).build(),
                 CropProfile.builder("Eggplant").temperature(22, 30).humidity(60, 75).soilMoisture(50, 70).build());
+    }
+
+    /** The legacy chamber layout, used when no chambers are given: chamber name to crop, in order. */
+    public static Map<String, String> legacyChambers() {
+        Map<String, String> chambers = new LinkedHashMap<>();
+        chambers.put("CH1", "Tomato");
+        chambers.put("CH2", "Strawberry");
+        chambers.put("CH3", "Lettuce");
+        chambers.put("CH4", "Chili");
+        return chambers;
     }
 
     public static CropRegistry defaultRegistry() {

@@ -8,6 +8,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.Consumer;
 import org.example.alert.Alert;
 import org.example.alert.AlertLedger;
 import org.example.resource.UsageTotals;
@@ -22,30 +23,32 @@ public final class ReportService {
     private final ChamberSummaries summaries;
     private final Report dailyReport;
     private final Report archiveReport;
+    private final Consumer<String> console;
     private final List<String> activity = Collections.synchronizedList(new ArrayList<>());
 
     public ReportService(AlertLedger alerts, UsageTotals meter, ChamberSummaries summaries, Report dailyReport,
-            Report archiveReport) {
+            Report archiveReport, Consumer<String> console) {
         this.alerts = alerts;
         this.meter = meter;
         this.summaries = summaries;
         this.dailyReport = dailyReport;
         this.archiveReport = archiveReport;
+        this.console = console;
     }
 
     public void archiveAlerts() {
         int moved = alerts.archiveActive().size();
         if (moved > 0) {
             activity.add("Archived " + moved + " alerts");
-            System.out.println("Archiving alerts... " + moved + " moved to archive.");
+            console.accept("Archiving alerts... " + moved + " moved to archive.");
         } else {
             activity.add("No alerts to archive");
-            System.out.println("Archiving alerts... no active alerts to archive.");
+            console.accept("Archiving alerts... no active alerts to archive.");
         }
     }
 
     public void generateDailyReport() {
-        dailyReport.render(snapshot()).forEach(System.out::println);
+        dailyReport.render(snapshot()).forEach(console);
         activity.add("Daily Report");
     }
 
@@ -58,7 +61,7 @@ public final class ReportService {
         Path dir = file.getParent(); // kept relative so error messages name the path as legacy did
         if (dir != null) Files.createDirectories(dir);
         Files.write(file, archiveReport.render(snapshot()), StandardCharsets.UTF_8);
-        System.out.println("Archive report saved to: " + file.toAbsolutePath());
+        console.accept("Archive report saved to: " + file.toAbsolutePath());
     }
 
     private FacilitySnapshot snapshot() {

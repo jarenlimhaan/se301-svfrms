@@ -49,7 +49,7 @@ class ResponseCoverageTest {
     @Test
     void incompletePolicyIsRejectedAtConstruction() {
         Map<Breach, Response> partial = Map.of(
-                new Breach(SensorType.TEMPERATURE, Direction.HIGH), new Response("High Temp", org.example.alert.Severity.CRITICAL, true, null));
+                new Breach(SensorType.TEMPERATURE, Direction.HIGH), new Response("High Temp", org.example.alert.Severity.CRITICAL, true, java.util.Optional.empty()));
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> new ResponsePolicy(partial));
         assertTrue(e.getMessage().contains("SOIL_MOISTURE"), e.getMessage());
     }

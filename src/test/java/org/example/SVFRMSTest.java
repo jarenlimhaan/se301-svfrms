@@ -98,7 +98,7 @@ class SVFRMSTest {
             dispatcher.start();
             for (int i = 0; i < 100; i++) dispatcher.request("CH1", Devices.GROW_LIGHT);
         }
-        assertEquals(1000.0, chambers.state("CH1").get(SensorType.LIGHT));
+        assertEquals(1000.0, Chambers.read(chambers.control("CH1"), SensorType.LIGHT));
         assertTrue(tracker.lines().getFirst().contains("Actions=100"));
     }
 }

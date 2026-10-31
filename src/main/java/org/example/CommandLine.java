@@ -1,9 +1,5 @@
 package org.example;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -20,7 +16,7 @@ import org.example.crop.CropSpecParser;
  * {@link CropRegistry}; no monitoring, alerting or control code is involved.
  *
  * @param chambers    chamber name to crop name, in order; the legacy four chambers if none were given
- * @param addedCrops  crops defined with {@code --add-crop} or {@code --crops} (replacing any same-named crop)
+ * @param addedCrops  crops defined with {@code --add-crop} (replacing any same-named crop)
  * @param removedCrops crop names given with {@code --remove-crop}
  * @param severityAlerts whether alerts are printed with their severity ({@code --alert-format=severity})
  * @param help        whether {@code --help} was given
@@ -32,7 +28,6 @@ record CommandLine(Map<String, String> chambers, List<CropProfile> addedCrops, L
             Usage: java -jar run.jar [options] [CHAMBER=Crop ...]
               CHAMBER=Crop             assign a crop to a chamber, e.g. CH5=Kale (default: CH1..CH4 legacy crops)
               --add-crop=SPEC          add or replace a crop, e.g. --add-crop="Okra:temperature=24..30,soil=50..70"
-              --crops=FILE             add every crop in FILE (one SPEC per line; blank lines and # comments ignored)
               --remove-crop=Name       remove a crop from the catalog for this run
               --alert-format=FORMAT    legacy (default: [CH1][Tomato][ALERT] ...) or severity (CRITICAL: ...)
               --help                   show this message
@@ -40,16 +35,13 @@ record CommandLine(Map<String, String> chambers, List<CropProfile> addedCrops, L
             Exit status: 0 success, 1 run failed, 2 archive report not saved, 3 invalid arguments.""";
 
     CommandLine {
-        chambers = Collections.unmodifiableMap(new LinkedHashMap<>(chambers.isEmpty() ? legacyChambers() : chambers));
+        chambers = Collections.unmodifiableMap(new LinkedHashMap<>(chambers.isEmpty() ? CropCatalog.legacyChambers() : chambers));
         addedCrops = List.copyOf(addedCrops);
         removedCrops = List.copyOf(removedCrops);
     }
 
-    /**
-     * @throws IllegalArgumentException if an argument is malformed
-     * @throws IOException              if a {@code --crops} file cannot be read
-     */
-    static CommandLine parse(String... args) throws IOException {
+    /** @throws IllegalArgumentException if an argument is malformed */
+    static CommandLine parse(String... args) {
         Map<String, String> chambers = new LinkedHashMap<>();
         List<CropProfile> added = new ArrayList<>();
         List<String> removed = new ArrayList<>();
@@ -60,8 +52,6 @@ record CommandLine(Map<String, String> chambers, List<CropProfile> addedCrops, L
                 help = true;
             } else if (arg.startsWith("--add-crop=")) {
                 added.add(CropSpecParser.parse(value(arg)));
-            } else if (arg.startsWith("--crops=")) {
-                added.addAll(readCropFile(Path.of(value(arg))));
             } else if (arg.startsWith("--remove-crop=")) {
                 removed.add(value(arg));
             } else if (arg.startsWith("--alert-format=")) {
@@ -100,23 +90,5 @@ record CommandLine(Map<String, String> chambers, List<CropProfile> addedCrops, L
         String value = option.substring(option.indexOf('=') + 1).trim();
         if (value.isEmpty()) throw new IllegalArgumentException("Missing value: " + option);
         return value;
-    }
-
-    private static List<CropProfile> readCropFile(Path file) throws IOException {
-        List<CropProfile> crops = new ArrayList<>();
-        for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
-            String spec = line.strip();
-            if (!spec.isEmpty() && !spec.startsWith("#")) crops.add(CropSpecParser.parse(spec));
-        }
-        return crops;
-    }
-
-    private static Map<String, String> legacyChambers() {
-        Map<String, String> chambers = new LinkedHashMap<>();
-        chambers.put("CH1", "Tomato");
-        chambers.put("CH2", "Strawberry");
-        chambers.put("CH3", "Lettuce");
-        chambers.put("CH4", "Chili");
-        return chambers;
     }
 }

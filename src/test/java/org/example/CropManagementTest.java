@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -44,14 +43,12 @@ class CropManagementTest {
 
     @Test
     void commandLineAddsReplacesAndRemovesCrops() throws Exception {
-        Path file = dir.resolve("crops.txt");
-        Files.writeString(file, "# extra crops\nBasil:temperature=18..27,humidity=40..60\n\nMint:temperature=15..25\n",
-                StandardCharsets.UTF_8);
-        CommandLine cli = CommandLine.parse("--add-crop=Okra:temperature=24..30", "--crops=" + file,
-                "--add-crop=Lettuce:temperature=12..18", "--remove-crop=Spinach", "CH5=Okra", "CH6=Basil");
+        CommandLine cli = CommandLine.parse("--add-crop=Okra:temperature=24..30",
+                "--add-crop=Basil:temperature=18..27,humidity=40..60", "--add-crop=Lettuce:temperature=12..18",
+                "--remove-crop=Spinach", "CH5=Okra", "CH6=Basil");
 
         CropRegistry crops = cli.cropRegistry();
-        assertTrue(crops.names().containsAll(List.of("Okra", "Basil", "Mint")));
+        assertTrue(crops.names().containsAll(List.of("Okra", "Basil")));
         assertTrue(crops.find("Spinach").isEmpty());
         assertEquals(new Range(12, 18), crops.find("Lettuce").orElseThrow().range(SensorType.TEMPERATURE).orElseThrow());
         assertEquals(Map.of("CH5", "Okra", "CH6", "Basil"), cli.chambers());
@@ -68,7 +65,6 @@ class CropManagementTest {
         assertThrows(IllegalArgumentException.class, () -> CommandLine.parse("CH1"));
         assertThrows(IllegalArgumentException.class, () -> CommandLine.parse("--add-crop="));
         assertThrows(IllegalArgumentException.class, () -> CommandLine.parse("--remove-crop=Durian").cropRegistry());
-        assertThrows(java.io.IOException.class, () -> CommandLine.parse("--crops=" + dir.resolve("missing.txt")));
     }
 
     @Test

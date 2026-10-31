@@ -3,7 +3,7 @@ package org.example.device;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
-import org.example.sensor.ChamberStates;
+import org.example.sensor.ChamberControls;
 
 /**
  * Producer-consumer: chamber threads queue {@link DeviceRequest}s (commands) into a bounded queue;
@@ -31,8 +31,10 @@ public final class ControlDispatcher implements DeviceController, AutoCloseable 
     private volatile State state = State.NEW;
     /** Why the worker stopped before the queue was closed and drained, or {@code null}. */
     private volatile Throwable workerFailure;
+    /** 1 if an Error killed the worker while it was executing a request (that request did not complete). */
+    private volatile int lostInFlight;
 
-    public ControlDispatcher(ChamberStates chambers, int capacity, List<DeviceListener> listeners,
+    public ControlDispatcher(ChamberControls chambers, int capacity, List<DeviceListener> listeners,
                              Duration shutdownTimeout) {
         this.queue = new ClosableBoundedQueue<>(capacity);
         this.executor = new RequestExecutor(chambers, listeners);
@@ -75,6 +77,7 @@ public final class ControlDispatcher implements DeviceController, AutoCloseable 
             fail(e);
             Thread.currentThread().interrupt();
         } catch (Throwable t) { // an Error escaping a device: record it rather than dying silently
+            lostInFlight = 1;
             fail(t);
         }
     }
@@ -106,18 +109,22 @@ public final class ControlDispatcher implements DeviceController, AutoCloseable 
         }
         if (previous != State.RUNNING) { // another thread is closing (or has closed): wait for its drain
             awaitWorker(shutdownTimeout);
+            if (worker.isAlive() || workerFailure != null) {
+                throw new IllegalStateException("control worker did not stop cleanly (see the first close())", workerFailure);
+            }
             return;
         }
         try {
             queue.close();
             awaitWorker(shutdownTimeout);
             if (worker.isAlive()) {
+                int dropped = queue.drain().size(); // nothing more may run after close() gives up
                 worker.interrupt();
                 awaitWorker(INTERRUPT_GRACE);
                 throw new IllegalStateException("control worker did not finish within " + shutdownTimeout
-                        + "; it was interrupted and pending device requests may not have run");
+                        + "; it was interrupted and " + dropped + " queued device request(s) were dropped");
             }
-            int notExecuted = queue.drain().size();
+            int notExecuted = queue.drain().size() + lostInFlight;
             if (workerFailure != null) {
                 throw new IllegalStateException("control worker stopped abnormally; " + notExecuted
                         + " queued device request(s) were not executed", workerFailure);

@@ -6,10 +6,11 @@ import org.example.alert.AlertSink;
 import org.example.alert.Severity;
 import org.example.crop.CropLookup;
 import org.example.crop.CropProfile;
+import org.example.device.Device;
 import org.example.device.DeviceController;
 import org.example.resource.UsageRecorder;
 import org.example.sensor.Breach;
-import org.example.sensor.ChamberStates;
+import org.example.sensor.ReadingRecorder;
 import org.example.sensor.Direction;
 import org.example.sensor.SensorType;
 
@@ -23,13 +24,13 @@ import org.example.sensor.SensorType;
  */
 public final class SensorProcessor implements ReadingProcessor {
     private final CropLookup crops;
-    private final ChamberStates chambers;
+    private final ReadingRecorder chambers;
     private final AlertSink alerts;
     private final UsageRecorder usage;
     private final ResponsePolicy policy;
     private final DeviceController controller;
 
-    public SensorProcessor(CropLookup crops, ChamberStates chambers, AlertSink alerts,
+    public SensorProcessor(CropLookup crops, ReadingRecorder chambers, AlertSink alerts,
                            UsageRecorder usage, ResponsePolicy policy, DeviceController controller) {
         this.crops = crops;
         this.chambers = chambers;
@@ -58,9 +59,8 @@ public final class SensorProcessor implements ReadingProcessor {
         Response response = policy.responseTo(breach); // never null: the policy is complete
         alerts.raise(new Alert(chamber, crop, response.alertMessage(chamber, crop), response.severity()));
         profile.cost(breach).ifPresent(usage::record);
-        if (response.device() != null) {
-            controller.request(chamber, response.device());
-        }
+        Optional<Device> device = response.device();
+        if (device.isPresent()) controller.request(chamber, device.get());
     }
 
     @Override

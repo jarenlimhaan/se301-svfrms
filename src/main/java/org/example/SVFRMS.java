@@ -66,7 +66,7 @@ public final class SVFRMS {
         try {
             cli = CommandLine.parse(args);
             crops = cli.cropRegistry();
-        } catch (IllegalArgumentException | IOException e) {
+        } catch (IllegalArgumentException e) {
             System.err.println("ERROR: " + e.getMessage());
             System.err.println(CommandLine.USAGE);
             return EXIT_BAD_ARGUMENTS;
@@ -83,7 +83,8 @@ public final class SVFRMS {
         AlertListener alertPrinter = cli.severityAlerts() ? new SeverityAlertPrinter() : new ConsoleAlertPrinter();
         AlertService alerts = new AlertService(List.of(summaries, alertPrinter));
         ChamberRegistry chamberStates = new ChamberRegistry();
-        ReportService reports = new ReportService(alerts, meter, summaries, new DailyReport(), new ArchiveReport());
+        ReportService reports = new ReportService(alerts, meter, summaries, new DailyReport(), new ArchiveReport(),
+                System.out::println);
 
         ControlDispatcher dispatcher = new ControlDispatcher(chamberStates, CONTROL_QUEUE_CAPACITY,
                 List.of(summaries, new ConsoleControlPrinter()), CONTROL_SHUTDOWN_TIMEOUT);

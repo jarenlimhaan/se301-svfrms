@@ -2,21 +2,21 @@ package org.example.device;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.example.sensor.ChamberStates;
+import org.example.sensor.ChamberControls;
 import org.example.support.Listeners;
 
 /**
- * Executes one {@link DeviceRequest}: applies the device to its chamber, notifies listeners, and
+ * Invoker for {@link DeviceRequest} commands: executes one, notifies listeners, and
  * counts outcomes. Device code runs outside every lock; each change it makes is one atomic
  * {@code adjust} call.
  */
 final class RequestExecutor {
-    private final ChamberStates chambers;
+    private final ChamberControls chambers;
     private final Listeners<DeviceListener> listeners;
     private final AtomicInteger executed = new AtomicInteger();
     private final AtomicInteger failed = new AtomicInteger();
 
-    RequestExecutor(ChamberStates chambers, List<DeviceListener> listeners) {
+    RequestExecutor(ChamberControls chambers, List<DeviceListener> listeners) {
         this.chambers = chambers;
         this.listeners = new Listeners<>("CONTROL", listeners);
     }
@@ -24,7 +24,7 @@ final class RequestExecutor {
     void execute(DeviceRequest request) {
         String effect;
         try {
-            effect = request.device().activate(chambers.control(request.chamber()));
+            effect = request.execute(chambers);
         } catch (RuntimeException e) {
             // A failing device must not kill the worker: log it, count it, carry on.
             failed.incrementAndGet();

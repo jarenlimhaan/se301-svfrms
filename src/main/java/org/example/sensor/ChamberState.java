@@ -14,10 +14,6 @@ public final class ChamberState implements ChamberControl {
         for (SensorType type : SensorType.values()) values.put(type, type.initialValue());
     }
 
-    public synchronized double get(SensorType type) {
-        return values.get(type);
-    }
-
     /**
      * Records a sensor reading.
      *
