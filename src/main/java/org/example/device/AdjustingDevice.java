@@ -1,6 +1,6 @@
 package org.example.device;
 
-import org.example.sensor.ChamberState;
+import org.example.sensor.ChamberControl;
 import org.example.sensor.SensorType;
 
 /**
@@ -11,8 +11,8 @@ public record AdjustingDevice(String name, SensorType sensor, double delta, doub
         implements Device {
 
     @Override
-    public String activate(ChamberState state) {
-        double value = state.adjust(sensor, delta, limit);
+    public String activate(ChamberControl chamber) {
+        double value = chamber.adjust(sensor, delta, limit);
         return effectFormat.formatted(String.valueOf(value));
     }
 }

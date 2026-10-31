@@ -10,7 +10,7 @@ import org.example.device.Device;
 import org.example.device.DeviceListener;
 
 /** Keeps a per-chamber tally of alerts and mitigation actions by listening to both. */
-public final class ChamberSummaryTracker implements AlertListener, DeviceListener {
+public final class ChamberSummaryTracker implements AlertListener, DeviceListener, ChamberSummaries {
 
     private static final class Summary {
         private int alerts;
@@ -45,7 +45,7 @@ public final class ChamberSummaryTracker implements AlertListener, DeviceListene
         summary(chamber).action(device.name() + " Activated");
     }
 
-    /** One line per chamber, sorted by chamber name. */
+    @Override
     public List<String> lines() {
         return new TreeMap<>(summaries).entrySet().stream()
                 .map(e -> e.getKey() + " -> " + e.getValue().describe())

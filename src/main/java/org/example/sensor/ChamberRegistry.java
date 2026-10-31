@@ -4,9 +4,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 /** Thread-safe lookup of chamber state; creates a chamber on first use. */
-public final class ChamberRegistry {
+public final class ChamberRegistry implements ChamberStates {
     private final ConcurrentMap<String, ChamberState> chambers = new ConcurrentHashMap<>();
 
+    @Override
     public ChamberState state(String chamber) {
         return chambers.computeIfAbsent(chamber, c -> new ChamberState());
     }

@@ -30,7 +30,7 @@ class SVFRMSTest {
     private final AlertService alerts = new AlertService(List.of());
     private final List<String> requested = Collections.synchronizedList(new ArrayList<>());
     private final SensorProcessor processor = new SensorProcessor(crops, new ChamberRegistry(), new SensorLog(),
-            alerts, meter, ResponsePolicy.standard(), (chamber, device) -> requested.add(chamber + "|" + device.name()));
+            alerts, meter, ResponsePolicy.standard(), (chamber, device, trigger) -> requested.add(chamber + "|" + device.name()));
 
     private List<String> alertMessages() {
         alerts.archiveActive();

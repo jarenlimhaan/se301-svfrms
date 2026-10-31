@@ -2,121 +2,128 @@
 
 ## 1. Legacy System Analysis
 
-SVFRMS monitors the growing chambers of a vertical-farming facility. Each chamber grows one crop; sensors report temperature, humidity, soil moisture, light and nutrient levels; readings outside the crop's acceptable range raise alerts and trigger corrective devices (cooling fan, water pump, humidifier, …); at the end of a run the system archives alerts, prints a daily report and saves an archive report to `archive/daily_report.txt`.
+SVFRMS monitors the growing chambers of a vertical-farming facility. Each chamber grows one crop. Sensors report temperature, humidity, soil moisture, light and nutrient levels. A reading outside the crop's range raises an alert, records water or energy use and triggers a corrective device (cooling fan, water pump, humidifier, …). At the end of a run the system archives alerts, prints a daily report and saves an archive report to `archive/daily_report.txt`.
 
-The legacy implementation is a single 393-line class, `SVFRMS`, containing:
+The legacy code is one 393-line class, `SVFRMS`, whose main components are:
 
-| Concern | Legacy location |
+| Component | Legacy location |
 |---|---|
-| Global mutable state (alerts, logs, counters, chamber maps, locks) | `public static` fields, lines 7–31 |
-| Chamber state / summary | nested classes `ChamberState`, `ChamberSummary` |
-| Event handling (logging, alerts, tracking) | `handleEvent(String type, …)` string switch, lines 62–88 |
-| Device control | `activateControl` if/else chain, lines 90–129 |
-| Control queue (producer–consumer) | `addControlRequest` + `ControlThread`, `wait/notifyAll` on an `ArrayList` |
-| Crop threshold logic | `processSensor`, 65 lines of nested `if (crop.equals(...))`, lines 141–205 |
-| Reports | `generateDailyReport`, `archiveAlerts`, `saveArchiveReport` |
-| Simulation | `ChamberThread extends Thread`, `main` |
+| Global mutable state: alert/log/report lists, counters, chamber maps, four locks | `public static` fields, lines 7–31 |
+| Chamber state and per-chamber summary | nested classes `ChamberState`, `ChamberSummary`, lines 33–60 |
+| Event handling: logging, alert creation, tracking | `handleEvent(String type, …)` string switch, lines 62–88 |
+| Device control and its queue (producer–consumer) | `activateControl` if/else chain (90–129); `addControlRequest` + `ControlThread`, `wait/notifyAll` on an `ArrayList` (131–139, 251–273) |
+| Crop threshold rules | `processSensor`: 65 lines of nested `if (crop.equals(...))`, lines 141–205 |
+| Reports | `generateDailyReport`, `archiveAlerts`, `saveArchiveReport`, lines 207–241, 309–347 |
+| Simulation and start-up | `ChamberThread extends Thread` (275–295), `main` (349–392) |
 
 ## 2. Code Analysis and Limitations
 
-### 2.1 Design issues (mapped to SOLID)
+### 2.1 Design issues and code smells
 
-| # | Issue | Evidence | Principle |
+| # | Issue (code smell) | Evidence | Principle |
 |---|---|---|---|
-| D1 | **God class.** One class does sensing, crop rules, device control, alerting, reporting, file I/O, threading and simulation. | whole file | SRP |
-| D2 | **Crop rules hard-coded in `if/else` chains.** Adding Kale means editing `processSensor` in up to 3 sensor branches; thresholds, alert text, energy/water costs and devices are interleaved. | lines 145–188 | OCP |
-| D3 | **Stringly-typed dispatch.** `handleEvent("TRACK_ALERT", …)`, `activateControl(…, "Cooling Fan")`; queue items are chamber and control joined into one string with a separator character and split apart again. Typos fail silently; a chamber name containing the separator breaks parsing. | lines 62–129, 136, 269 | OCP, type safety |
-| D4 | **Inheritance misuse.** `ControlThread`/`ChamberThread extends Thread` only to override `run()`, inheriting dozens of unrelated `Thread` methods. The classes are tasks, not threads, and they couple the work to one way of running it. | lines 251, 275 | Composition over inheritance |
-| D5 | **Fat, implicit interface.** `handleEvent` is one entry point for 6 unrelated operations; every caller depends on all of them. | line 62 | ISP |
-| D6 | **Everything depends on concretions and globals.** All collaborators are `public static` fields; nothing can be substituted or tested in isolation. | lines 10–31 | DIP |
-| D7 | **Dead code / leftovers.** `waterPumpLock`, `nutrientLock`, `irrigationCycle`, `feedingCycle`, `showAlerts`, `showLogs`, `ALERT_LOG` are never used; commented-out `Thread.sleep` calls. | lines 28–29, 224, 243–307, 385 | Clean code |
-| D8 | **Swallowed exceptions.** `catch(Exception e){}` around `wait()` hides interrupts. | lines 134, 258 | Reliability |
+| D1 | **God class** (large class, divergent change): sensing, crop rules, devices, alerts, reports, file I/O, threads and simulation in one class. | whole file | SRP |
+| D2 | **Crop rules hard-coded** (long method, duplicated code, shotgun surgery): adding Kale means a new `if` block in up to three sensor branches of `processSensor`; thresholds, costs and devices are **magic numbers** repeated per crop. | lines 145–188 | OCP |
+| D3 | **Stringly-typed dispatch** (primitive obsession): `handleEvent("TRACK_ALERT", …)`, `activateControl(…, "Cooling Fan")`; queue items are `chamber + "\|" + control`, split again later. Typos fail silently; a `\|` in a chamber name breaks parsing. | lines 62–129, 136, 269 | OCP, type safety |
+| D4 | **Inheritance that breaks the base contract.** `ControlThread extends Thread` but swallows every exception around `wait()`, so `interrupt()`, the standard way to stop a `Thread`, does not stop it: the subclass cannot be substituted where a `Thread` is expected to honour interruption. Both classes are tasks, not threads (refused bequest). | lines 251–273, 258, 275 | LSP |
+| D5 | **Fat, implicit interface**: `handleEvent` is one entry point for six unrelated operations; every caller depends on all of them. | line 62 | ISP |
+| D6 | **Dependence on globals and concretions**: every collaborator is a `public static` field; nothing can be replaced or tested alone. | lines 10–31 | DIP |
+| D7 | **Dead code**: `waterPumpLock`, `nutrientLock`, `irrigationCycle`, `feedingCycle`, `showAlerts`, `showLogs`, the `ALERT_LOG` branch, commented-out `sleep` calls — none is ever called. | lines 28–29, 66–68, 224, 243–307, 385 | Clean code |
+| D8 | **Swallowed exceptions**: `catch(Exception e){}` hides interrupts; `saveArchiveReport` prints an I/O error and the run still "succeeds". | lines 134, 258, 344 | Reliability |
 
-### 2.2 Behavioural quirks found (preserved, see §3.4)
+### 2.2 Behavioural quirks (kept, see §3.3)
 
-- Soil-moisture checks exist only for Tomato; humidity checks only for Tomato and Strawberry, although the spec lists ranges for other crops.
-- Light (< 500 lux) and nutrient (< 40 %) thresholds are facility-wide, not per crop, and their alert text omits the crop name.
-- Low temperature raises an alert but activates no device (no Heating Unit).
-- Several features described in spec §3 were never implemented in the legacy code: alert severity levels (INFO/WARNING/CRITICAL), Sensor Failure alerts, the Heating Unit, Ventilation System and Shade Controller devices, and the Weekly Crop, Water Usage, Energy and Nutrient reports. They are out of scope for a behaviour-preserving refactor; §5 shows where each would plug in.
+- Soil checks exist only for Tomato (and only its minimum); humidity checks only for Tomato and Strawberry. The spec's soil range for Strawberry and humidity/soil ranges for Lettuce were never coded.
+- Light (< 500 lux) and nutrient (< 40 %) limits are facility-wide, and their alert text omits the crop. Low temperature alerts but starts no device (no Heating Unit).
+- A queued device request can run after a newer reading of the same sensor (a fan queued at 35 °C runs after a 20 °C reading). This is a logical ordering issue, not a data race.
+- Never implemented: severity levels, Sensor Failure alerts, Heating Unit, Ventilation System, Shade Controller and the weekly, water, energy and nutrient reports. §5 shows where each plugs in; severity and Sensor Failure were added (§3.3).
 
 ### 2.3 Concurrency issues
 
-Four `ChamberThread`s and one `ControlThread` share all static state.
+Four `ChamberThread`s and one `ControlThread` share all static state with no consistent locking.
 
 | # | Type | Where | Failure |
 |---|---|---|---|
-| C1 | Race condition | `alerts`, `sensorLogs`, `reports` are plain `ArrayList`s; `add` from 4 threads | Lost alerts, corrupted internal array, `ArrayIndexOutOfBoundsException` |
-| C2 | Race condition (check-then-act) | `getChamberState`/`getChamberSummary`: `containsKey` → `put` on a `HashMap` | Two `ChamberState`s for one chamber; `HashMap` corruption under concurrent resize |
-| C3 | Lost update | `totalWaterUsage += …`, `totalEnergyUsage`, `totalAlerts++`, `totalAlertsGenerated++` | Read-modify-write is not atomic → wrong totals in the report |
-| C4 | Data race / visibility | `ChamberState` fields written by chamber thread (`state.temperature = value`) and read-modified-written by control thread (`activateControl`) with no lock | Device effect overwritten or computed from stale value |
-| C5 | Lost update | `ChamberSummary.alerts++` (chamber threads) and `mitigationActions++` (control thread) | Chamber summary counts don't add up |
-| C6 | Order race | `main` starts `archiveAlerts` and `generateDailyReport` threads simultaneously | "Active Alerts" in the report is non-deterministic (N or 0) — the commented-out `sleep(20)` shows the intern noticed |
-| C7 | Liveness / deadlock | Producers `wait()` on a full queue with no timeout; if `ControlThread` dies (any `RuntimeException` in `activateControl`) nobody consumes → all 4 chamber threads block forever and `main` hangs on `join()` | System hang |
-| C8 | Deadlock risk (latent) | Nested `synchronized(alertLock){ synchronized(reportLock){…} }` in two methods. Both currently take the locks in the same order, so it does not deadlock today; it stays safe only while every caller keeps that order; the locks are `public static` **non-final**, so any code can lock them in another order or reassign them | Classic lock-ordering deadlock once a third method takes `reportLock → alertLock` |
-| C9 | Unsafe iteration | `showAlerts`/`showLogs` iterate shared lists while threads add | `ConcurrentModificationException` |
+| C1 | Race condition | `alerts`, `sensorLogs`, `reports` are plain `ArrayList`s written by 4 threads | Lost alerts, corrupted array, `ArrayIndexOutOfBoundsException` |
+| C2 | Check-then-act race | `getChamberState`/`getChamberSummary`: `containsKey` → `put` on a `HashMap` | Two states for one chamber; `HashMap` corruption → `NullPointerException` |
+| C3 | Lost update | `totalWaterUsage += …`, `totalEnergyUsage`, `totalAlerts++`, `totalAlertsGenerated++` | Non-atomic read-modify-write → wrong totals |
+| C4 | Data race / visibility | `ChamberState` fields written by chamber threads and read-modify-written by the control thread with no lock | Device effect lost or computed from a stale value |
+| C5 | Lost update | `ChamberSummary.alerts++` (chamber threads) vs `mitigationActions++` (control thread) | Summary counts don't add up |
+| C6 | Order race | `main` starts `archiveAlerts` and `generateDailyReport` threads at once | "Active Alerts" is 0 or N at random (the commented `sleep(20)` shows it was noticed) |
+| C7 | Liveness (deadlock-like hang) | Producers `wait()` on a full queue with no timeout; if `ControlThread` dies (any `RuntimeException`, e.g. the C2 NPE) nobody consumes | All chamber threads block forever; `main` hangs in `join()` |
+| C8 | Latent deadlock | Nested `synchronized(alertLock){ synchronized(reportLock){…} }` in two methods; the locks are `public static`, **non-final** | Lock-ordering deadlock as soon as any code takes them in the other order |
+| C9 | Unsafe iteration | `showAlerts`/`showLogs` iterate lists other threads modify | `ConcurrentModificationException` |
+
+**Measured** (150 runs per version, Linux, JDK 21; each run checked against its own synchronized console output):
+
+| Symptom | Legacy | Refactored |
+|---|---|---|
+| Crash: `NullPointerException` in a chamber thread (C2) | 3 | 0 |
+| Archive lists fewer alerts than were raised (C1) | 5 | 0 |
+| Wrong water/energy total (C3) / wrong "Generated Alerts" (C3) | 5 / 2 | 0 / 0 |
+| Chamber summary counts wrong (C5) | 1 | 0 |
+| "Active Alerts" in the daily report (C6) | 0 in 130 runs, N in 20 | 0 in all 150 |
+
+No hang (C7) occurred in these runs because the NPEs hit chamber threads. `legacy/LegacyHangDemo.java` forces the same NPE in the control thread, by swapping the public, non-final `chamberStates` field (D6) without editing the legacy code. It hangs in 5 of 5 runs: all four chamber threads wait forever in `addControlRequest` (line 134) and `main` never returns. The refactored version fails instead, rejecting requests and exiting with status 1 (`ControlDispatcherLifecycleTest`).
 
 ## 3. Proposed Design
 
-### 3.1 Key decisions
+### 3.1 Key decisions, by SOLID principle
 
-1. **Split by responsibility into packages** (D1): `crop`, `sensor`, `device`, `alert`, `resource`, `monitoring`, `report`, `simulation`, plus `SVFRMS` as composition root.
-2. **Crops become data, not code** (D2): a `CropProfile` holds a `Range` per sensor and the resource cost per breach. `SensorProcessor` contains *one* generic rule: *if the reading breaches the crop's range and the policy has a response, alert → record cost → request device.* No crop name appears in processing logic.
-3. **Types instead of strings** (D3): `SensorType`, `Direction`, `Breach`, `Device`, `Alert` replace magic strings and the `"chamber|control"` encoding.
-4. **Composition over inheritance** (D4): simulations are `Runnable`s run by an `ExecutorService`; the dispatcher owns its worker thread.
-5. **Small role interfaces** (D5): `AlertListener`, `DeviceListener`, `DeviceController`, `Device`, `Report` each have one method.
-6. **Constructor injection** (D6): every component receives its collaborators; only `SVFRMS.main` knows the concrete classes. `SensorProcessor` depends on the `DeviceController` interface, so tests pass a lambda instead of a real dispatcher.
-7. **Dead code removed** (D7); interrupts restored, never swallowed (D8).
+| Principle | Change (fixes) |
+|---|---|
+| **SRP** (D1) | Nine packages plus the composition root, one reason to change each (§4). The old dispatcher was split again: `ControlDispatcher` owns only the worker's lifecycle, `ClosableBoundedQueue` only blocking, `RequestExecutor` only running a request, `Listeners` only fault-isolated notification. |
+| **OCP** (D2, D3) | Crops are data: a `CropProfile` holds a `Range` per sensor and the cost per breach. `SensorProcessor` has one generic rule (*breach → alert → cost → device*); no crop name appears in logic. Crops can even be added or removed at run time with no rebuild (`--add-crop`, `--crops=FILE`, `--remove-crop`). Every "for each sensor" loop iterates `SensorType`. |
+| **LSP** (D4) | No class extends `Thread`. Chamber work is a `Callable` run by an `ExecutorService`; the dispatcher owns its worker. All implementations honour their interface contracts: interrupts are restored, never swallowed. |
+| **ISP** (D5) | One-method roles (`AlertListener`, `DeviceListener`, `DeviceController`, `Device`, `Report`, `ReadingSource`). Services expose a separate interface per client: `AlertService` is an `AlertSink` to monitoring and an `AlertLedger` to reporting; `ResourceMeter` is a `UsageRecorder` and `UsageTotals`. |
+| **DIP** (D6) | Constructor injection; only the composition root (`SVFRMS.run`, `CommandLine`) names concrete classes. `SensorProcessor`, `ReportService`, `ChamberSimulation` and `ControlDispatcher` receive only interfaces or immutable values, which `ArchitectureTest` checks by reflection. |
+
+Dead code was removed (D7); I/O errors now set the exit status, and interrupts are restored (D8).
 
 ### 3.2 Concurrency fixes
 
 | Issue | Fix |
 |---|---|
-| C1, C9 | Shared lists are owned by one class each and guarded: `AlertService` (synchronized), `SensorLog` and activity log (`synchronizedList`). Readers get immutable copies (`List.copyOf`), so iteration never races. |
-| C2 | `ConcurrentHashMap.computeIfAbsent` in `ChamberRegistry`, `ChamberSummaryTracker`; atomic get-or-create. |
-| C3 | `ResourceMeter` uses `AtomicInteger`; alert counters change inside the same lock as the alert list, so "generated" and "active" are always consistent. |
-| C4 | `ChamberState` stores values in an `EnumMap` behind `synchronized` methods; devices use the atomic `adjust(sensor, delta, limit)` read-modify-write. |
-| C5 | Per-chamber `Summary` methods are `synchronized`. |
-| C6 | Archive and daily report run sequentially in a fixed order after all producers and the consumer have finished. |
-| C7 | Hand-rolled `wait/notify` replaced by `ArrayBlockingQueue` (`put`/`take`, interrupt-aware). The worker catches per-request `RuntimeException`s so it cannot die; shutdown uses a **poison pill** that is processed only after every earlier request, so no request is lost. |
-| C8 | **No nested locks anywhere.** Each component guards its own state with one lock; listeners are called *outside* the lock (no alien method calls while holding a lock); reports work on an immutable `FacilitySnapshot`. With no lock ever held while acquiring another, lock-ordering deadlock is impossible by construction. |
+| C1, C9 | Each shared list has one owner that guards it (`AlertService` synchronized; `SensorLog` and the activity log `synchronizedList`). Readers get immutable copies, so iteration never races. |
+| C2 | `ConcurrentHashMap.computeIfAbsent` (atomic get-or-create) in `ChamberRegistry` and `ChamberSummaryTracker`. |
+| C3, C5 | `AtomicInteger` counters in `ResourceMeter`; alert counters change under the same lock as the alert list; per-chamber summaries are `synchronized`. |
+| C4 | `ChamberState` is an `EnumMap` behind `synchronized` methods; device changes go through atomic `adjust` calls. Each reading gets a version and each device request carries its triggering reading, so the inherited ordering issue (§2.2) is detected in the same atomic step as the change: stale runs are counted, and `StaleRequestPolicy.SKIP` drops them (default `EXECUTE` keeps legacy behaviour). |
+| C6 | Archive, then daily report, sequentially, after all producers and the consumer have finished. |
+| C7 | `ClosableBoundedQueue` (one `ReentrantLock`, two `Condition`s) replaces `wait/notify`. If the worker dies, `abort` wakes every blocked producer at once with an error: no hang and no polling. `close()` rejects new requests atomically, lets the worker drain the queue, waits at most 30 s and reports any request not executed. Devices that throw are logged and counted; the worker carries on. Chamber tasks are `Callable`s and `SimulationRunner` checks every `Future`, so a failed or interrupted chamber fails the run (exit 1). |
+| C8 | **No nested locks anywhere**, by construction: each component guards its own state with one lock, and listeners and device code run outside every lock. Reports read an immutable `FacilitySnapshot`. |
 
-Evidence: `SVFRMSTest.countersSurviveConcurrentUpdates` (8 threads × 5 000 updates, exact totals) and `dispatcherDrainsEveryRequestBeforeClosing` (queue capacity 2, 100 requests, all applied).
+Tests: `countersSurviveConcurrentUpdates` (8 threads × 5 000 updates, exact totals), `closeDuringHeavyProductionLosesNothing` (close races 8 producers; every request runs or is rejected), `deviceCodeRunsWithNoChamberLockHeld`, worker death with a full queue, a hanging device, the stale-fan scenario.
 
-### 3.3 Feature extension — new crops
+### 3.3 Behaviour preservation
 
-Kale, Bell Pepper, Bok Choy and Eggplant are added as one `CropProfile.builder(...)` entry each in `CropCatalog`. Removing a crop is deleting its entry (or `CropRegistry.remove(name)` at runtime). Chambers can be assigned on the command line:
+Thresholds, alert texts, resource costs, device effects, console formats and the archive layout are identical: the sets of distinct output lines of 25 legacy and 25 refactored runs (numbers masked) were diffed and match. The quirks in §2.2 are kept because the brief forbids changing functionality; each is now a one-line data change (e.g. `.soilMoisture(50, 65)` on Strawberry). The one bound legacy ignores, Tomato soil above 60 %, is declared on the crop (`.ignoreBreach(SOIL_MOISTURE, HIGH)`) rather than hidden in the policy, which must cover every sensor and direction. Deliberate changes appear only when triggered:
 
-```
-java -jar run.jar CH1=Tomato CH5=Kale CH6=Eggplant
-```
-
-With no arguments the original four chambers run.
-
-### 3.4 Behaviour preservation
-
-Thresholds, alert texts, resource costs, device effects, console formats and the archive file layout are identical to the legacy system (the set of distinct output line formats from both versions was diffed and matches). The quirks in §2.2 were deliberately kept, because the brief says not to change functionality. Each is now a one-line data change. For example, adding `.soilMoisture(50, 65)` to Strawberry enables its soil check. The only intentional behavioural change is that C6 is now deterministic.
+- C6 is deterministic: "Active Alerts" is always 0, the legacy majority outcome.
+- **Sensor Failure** (spec §3.4): a reading a sensor cannot produce (NaN, infinite, outside its physical range, e.g. 150 % humidity) or no reading at all raises a CRITICAL `CHn Sensor Failure: …` alert and is never stored or acted on. Ranges, costs and resource amounts are validated.
+- **Severity** (spec §3.4): every alert carries INFO, WARNING or CRITICAL (temperature breaches are CRITICAL, as in the spec's example). `--alert-format=severity` prints `CRITICAL: CH3 Lettuce High Temp`; the default console format is unchanged.
+- New crops get alerts on both bounds of every range they define (e.g. `CH5 Kale High Soil Moisture`).
+- Exit status: 0 success; 1 run failed (no report written); 2 archive not saved; 3 invalid arguments.
 
 ## 4. Final Architecture
 
+**Component diagram**
+
 ```mermaid
 flowchart TB
-    Main[SVFRMS<br/>composition root] --> Sim[simulation<br/>ChamberSimulation x N]
-    Sim -->|reading| SP[monitoring<br/>SensorProcessor]
-    SP --> CR[crop<br/>CropRegistry / CropProfile]
-    SP --> RP[monitoring<br/>ResponsePolicy]
-    SP --> CH[sensor<br/>ChamberRegistry / ChamberState]
-    SP --> AS[alert<br/>AlertService]
-    SP --> RM[resource<br/>ResourceMeter]
-    SP -->|DeviceController| CD[device<br/>ControlDispatcher<br/>bounded queue + worker]
-    CD --> DV[device<br/>Device strategies]
-    DV --> CH
-    AS -.AlertListener.-> CST[report<br/>ChamberSummaryTracker]
-    AS -.AlertListener.-> CAP[ConsoleAlertPrinter]
-    CD -.DeviceListener.-> CST
-    CD -.DeviceListener.-> CCP[ConsoleControlPrinter]
-    Main --> RS[report<br/>ReportService]
-    RS --> AS & RM & CST
-    RS --> RPT[Report: DailyReport / ArchiveReport]
+    Main["SVFRMS.run + CommandLine<br/>composition root"] --> Sim["simulation<br/>SimulationRunner → ChamberSimulation ×N"]
+    Sim -->|ReadingSource| RS["RandomReadingSource"]
+    Sim -->|ReadingProcessor| SP["monitoring<br/>SensorProcessor + ResponsePolicy"]
+    SP -->|CropLookup| CR["crop<br/>CropRegistry / CropProfile"]
+    SP -->|ChamberStates| CH["sensor<br/>ChamberRegistry / ChamberState"]
+    SP -->|AlertSink| AS["alert<br/>AlertService"]
+    SP -->|UsageRecorder| RM["resource<br/>ResourceMeter"]
+    SP -->|DeviceController| CD["device<br/>ControlDispatcher<br/>ClosableBoundedQueue + worker"]
+    CD --> EX["RequestExecutor → Device"]
+    EX -->|ChamberControl| CH
+    AS -.AlertListener.-> CST["report<br/>ChamberSummaryTracker"]
+    EX -.DeviceListener.-> CST
+    Main --> REP["report<br/>ReportService (facade)"]
+    REP -->|AlertLedger, UsageTotals,<br/>ChamberSummaries| AS
 ```
 
 **Sequence: one out-of-range reading**
@@ -126,60 +133,128 @@ sequenceDiagram
     participant Sim as ChamberSimulation (chamber thread)
     participant SP as SensorProcessor
     participant AS as AlertService
-    participant CD as ControlDispatcher
-    participant W as control worker thread
+    participant Q as ClosableBoundedQueue
+    participant W as control worker (RequestExecutor)
     Sim->>SP: process(CH1, Tomato, TEMPERATURE, 31)
-    SP->>SP: profile.range(TEMPERATURE).breach(31) = HIGH
-    SP->>AS: raise(Alert "CH1 Tomato High Temp")
-    AS-->>AS: notify listeners (summary, console)
-    SP->>SP: meter.record(ENERGY 10)
-    SP->>CD: request(CH1, COOLING_FAN)  [blocks if queue full]
-    W->>CD: take()
-    W->>W: COOLING_FAN.activate(state) -> "Temperature reduced to 26.0C"
-    W-->>W: notify DeviceListeners
+    SP->>SP: state.set() → Reading v7, range.breach(31) = HIGH
+    SP->>AS: raise(Alert "CH1 Tomato High Temp", CRITICAL)
+    AS-->>AS: notify listeners outside the lock (summary, console)
+    SP->>SP: usage.record(ENERGY 10)
+    SP->>Q: put(DeviceRequest CH1, COOLING_FAN, Reading v7) [waits if full]
+    W->>Q: take()
+    W->>W: COOLING_FAN.activate → adjustChecked(Reading v7, −5, 18) → "Temperature reduced to 26.0C"
+    W-->>W: notify DeviceListeners outside the lock
 ```
 
-| Package | Classes | Responsibility |
+**Class diagrams: monitoring, alerts and reporting (left); device control (right)**
+
+```mermaid
+classDiagram
+    direction TB
+    class ReadingSource {
+        <<interface>>
+        +read(chamber, SensorType)
+    }
+    class ReadingProcessor {
+        <<interface>>
+        +process(chamber, crop, sensor, value)
+        +reportMissing(chamber, crop, sensor)
+    }
+    class AlertSink {
+        <<interface>>
+        +raise(Alert)
+    }
+    class AlertLedger {
+        <<interface>>
+        +archiveActive()
+        +archived()
+    }
+    class Report {
+        <<interface>>
+        +render(FacilitySnapshot)
+    }
+    ChamberSimulation --> ReadingSource
+    ChamberSimulation --> ReadingProcessor
+    ReadingSource <|.. RandomReadingSource
+    ReadingProcessor <|.. SensorProcessor
+    SensorProcessor --> AlertSink
+    AlertSink <|.. AlertService
+    AlertLedger <|.. AlertService
+    ReportService --> AlertLedger
+    ReportService --> Report
+    Report <|.. DailyReport
+    Report <|.. ArchiveReport
+```
+
+```mermaid
+classDiagram
+    direction TB
+    class DeviceController {
+        <<interface>>
+        +request(chamber, Device, Reading)
+    }
+    class Device {
+        <<interface>>
+        +activate(ChamberControl) String
+    }
+    class ChamberControl {
+        <<interface>>
+        +adjust(sensor, delta, limit)
+    }
+    class DeviceListener {
+        <<interface>>
+        +onActivated(chamber, Device, effect)
+    }
+    SensorProcessor --> DeviceController
+    DeviceController <|.. ControlDispatcher
+    ControlDispatcher *-- ClosableBoundedQueue
+    ControlDispatcher *-- RequestExecutor
+    RequestExecutor ..> DeviceRequest : executes
+    DeviceRequest --> Device
+    Device <|.. AdjustingDevice
+    Device ..> ChamberControl : changes chamber via
+    ChamberControl <|.. ChamberState
+    RequestExecutor --> DeviceListener
+    DeviceListener <|.. ChamberSummaryTracker
+```
+
+| Package | Main classes | Responsibility |
 |---|---|---|
-| `crop` | `CropProfile` (+Builder), `Range`, `CropRegistry`, `CropCatalog` | What each crop needs |
-| `sensor` | `SensorType`, `Direction`, `Breach`, `ChamberState`, `ChamberRegistry`, `SensorLog` | Readings and chamber conditions |
-| `monitoring` | `SensorProcessor`, `ResponsePolicy`, `Response` | Reading → alert/cost/device rule |
-| `device` | `Device`, `AdjustingDevice`, `Devices`, `DeviceController`, `ControlDispatcher`, `DeviceListener`, `ConsoleControlPrinter` | Executing corrective actions |
-| `alert` | `Alert`, `AlertService`, `AlertListener`, `ConsoleAlertPrinter` | Alert lifecycle |
-| `resource` | `Resource`, `Usage`, `ResourceMeter` | Water/energy accounting |
-| `report` | `Report`, `DailyReport`, `ArchiveReport`, `FacilitySnapshot`, `ChamberSummaryTracker`, `ReportService` | Reporting |
-| `simulation` | `ChamberSimulation` | Simulated sensor feed |
+| `crop` | `CropProfile` (+Builder), `Range`, `CropRegistry`, `CropCatalog`, `CropSpecParser` | What each crop needs |
+| `sensor` | `SensorType`, `Breach`, `Reading`, `ChamberState`, `ChamberRegistry`, `SensorLog` | Readings and chamber conditions |
+| `monitoring` | `SensorProcessor`, `ResponsePolicy`, `Response` | Reading → alert / cost / device rule |
+| `device` | `ControlDispatcher`, `ClosableBoundedQueue`, `RequestExecutor`, `DeviceRequest`, `Devices` | Executing corrective actions |
+| `alert`, `resource` | `AlertService`, `Severity`, printers; `ResourceMeter`, `Usage` | Alert lifecycle; water and energy |
+| `report` | `ReportService`, `DailyReport`, `ArchiveReport`, `FacilitySnapshot`, `ChamberSummaryTracker` | Reporting |
+| `simulation`, `support` | `ChamberSimulation`, `SimulationRunner`, `RandomReadingSource`; `Listeners` | Sensor feed; isolated notification |
 
 ## 5. Extensibility and Maintainability
 
 | Change | What to touch |
 |---|---|
-| Add/remove a crop | One entry in `CropCatalog` (or `CropRegistry.register/remove` at runtime). |
-| Add a device (e.g. Heating Unit for low temperature) | One `Devices` constant + change `Response("Low Temp", true, null)` to use it in `ResponsePolicy`. |
-| New alert condition (e.g. high light → Shade Controller) | One `ResponsePolicy` entry; crops that set a light max get it automatically. |
-| New sensor type | One `SensorType` constant; ranges and responses as above. |
-| New report (Water Usage, Energy, Nutrient…) | A new `Report` implementation rendering `FacilitySnapshot`. |
-| New alert channel (email, SMS, severity routing) | A new `AlertListener` registered in `SVFRMS.main`. |
-| Real sensors instead of simulation | Replace `ChamberSimulation` with a feed that calls `SensorProcessor.process`; nothing else changes. |
+| Add / remove a crop | One `CropCatalog` entry, or no code at all: `--add-crop="Okra:temperature=24..30,soil=50..70"`, `--crops=FILE`, `--remove-crop=Tomato`. |
+| Add a device (e.g. Heating Unit) | One `Devices` constant, referenced from the `Low Temp` entry of `ResponsePolicy.standard()`; no logic changes. |
+| New sensor type | One `SensorType` constant, its two `ResponsePolicy` entries and its simulated range; start-up fails fast if either is missing. Parsing, simulation and state follow automatically. |
+| New report (weekly, water, energy, nutrient) | A new `Report` implementation rendering `FacilitySnapshot`. |
+| New alert channel or severity routing | A new `AlertListener` registered in `SVFRMS.run`; a faulty one cannot disturb the others. |
+| Real sensors | A new `ReadingSource`; an unresponsive sensor already raises a Sensor Failure alert. |
 
-Each change is additive and local; existing classes stay closed for modification. Constructor injection makes every component testable in isolation (see `SVFRMSTest`).
+Every change is additive and local. Constructor injection lets each component be tested alone: 66 tests in 15 classes cover behaviour parity, every crop bound, validation, concurrency, shutdown, run-time crops and exit codes.
 
 ## 6. Design Patterns
 
-| Pattern | Where | Problem solved |
-|---|---|---|
-| **Builder** | `CropProfile.Builder` | Crops have many optional ranges and costs; the builder gives readable, validated, immutable profiles and applies facility defaults (light, nutrient). |
-| **Strategy** | `Device` / `AdjustingDevice`; `Report` / `DailyReport`, `ArchiveReport` | Replaces `activateControl`'s if/else chain and the hard-wired report code; new devices/reports plug in without editing callers. |
-| **Observer** | `AlertService` → `AlertListener`s; `ControlDispatcher` → `DeviceListener`s | Replaces `handleEvent("TRACK_ALERT"/"CREATE_ALERT"/…)`. Producers don't know who consumes alerts (console, summary tracker, future email). |
-| **Producer–Consumer** (with Poison Pill) | `ControlDispatcher` + `ArrayBlockingQueue` | Decouples sensing from device actuation with back-pressure; safe, lossless shutdown. |
-| **Registry** | `CropRegistry`, `ChamberRegistry` | Central, thread-safe lookup; crops added/removed at runtime. |
-| **Immutable Snapshot** | `FacilitySnapshot` | Reports read a consistent copy, so no locks are held while formatting or doing file I/O (fixes C8). |
-| **Composition Root / Dependency Injection** | `SVFRMS.main` | The only place that knows concrete classes; everything else depends on abstractions (DIP). |
+| Pattern | Where | Problem solved | Why this rather than the alternative |
+|---|---|---|---|
+| **Builder** | `CropProfile.Builder` | A crop has up to five optional ranges, costs and exceptions, plus facility defaults. | A constructor with a dozen optional arguments is unreadable and error-prone; setters would make profiles mutable while chamber threads read them. The builder validates each range and yields an immutable profile. |
+| **Strategy** | `Report` (`DailyReport`, `ArchiveReport`); `ReadingSource` (`RandomReadingSource`, test sources, future hardware) | Interchangeable algorithms chosen when wiring. | The legacy approach, `if/else` on a type string, edits the caller for every new variant (D3). |
+| **Observer** | `AlertService` → `AlertListener`s; `RequestExecutor` → `DeviceListener`s | Producers must not know who consumes alerts (console, summary, future email). | Direct calls (`handleEvent`) couple alerting to every consumer; fault isolation in `Listeners` keeps one bad listener from stopping the rest. |
+| **Command** | `DeviceRequest` (chamber, device, triggering reading) | Deciding to act (chamber thread) is separated from acting (control thread). The command carries everything needed to run later and to check whether it is stale. | Legacy encoded commands as `"chamber\|control"` strings parsed later (D3). |
+| **Producer–Consumer** with guarded suspension | `ControlDispatcher` + `ClosableBoundedQueue` | Back-pressure, one writer for device effects, clean and abnormal shutdown. | `ArrayBlockingQueue` + poison pill (our first version) cannot wake producers when the consumer dies. A thread pool would run devices concurrently and lose their order. |
+| **Facade** | `ReportService` | End-of-run reporting coordinates alerts, usage, summaries, two reports and file I/O. | Callers make three calls instead of reaching into five components, as legacy `main` did. |
+| **Static Factory Method** | `CropCatalog.defaultRegistry()`, `ResponsePolicy.standard()`, `RandomReadingSource.legacy()`, `CropSpecParser.parse()` | Named, validated creation of configured objects. | A constructor cannot say "the legacy configuration", nor validate and return an existing type. |
 
-## 7. Build & Run
+Supporting idioms: **Registry** (`CropRegistry`, `ChamberRegistry`, thread-safe lookup); **Immutable Value Objects** (`FacilitySnapshot`, `CropProfile`, records), so reports never hold a lock; **Dependency Injection** with a single composition root (`SVFRMS.run`).
 
-```
-mvn package                      # compiles, runs tests, produces target/run.jar
-java -jar run.jar                # legacy 4-chamber run
-java -jar run.jar CH5=Kale       # new crop demo
-```
+## 7. Build and Run
+
+`mvn clean package` builds `target/run.jar` and runs the 66 tests. `java -jar run.jar` runs the legacy four chambers; `java -jar run.jar --help` lists the options.

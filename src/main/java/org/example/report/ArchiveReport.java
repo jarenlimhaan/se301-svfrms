@@ -1,6 +1,7 @@
 package org.example.report;
 
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 
 /** The full report saved to the archive file: totals, activity, per-chamber summary and archived alerts. */
@@ -9,7 +10,8 @@ public final class ArchiveReport implements Report {
     public List<String> render(FacilitySnapshot s) {
         List<String> lines = new ArrayList<>();
         lines.add("===== DAILY REPORT =====");
-        lines.add("Timestamp: " + s.timestamp());
+        // Date.toString gives the same timestamp format as the legacy report.
+        lines.add("Timestamp: " + Date.from(s.timestamp()));
         lines.add("Generated Alerts: " + s.generatedAlerts());
         lines.add("Active Alerts: " + s.activeAlerts());
         lines.add("Water Usage: " + s.waterUsage() + " L");
