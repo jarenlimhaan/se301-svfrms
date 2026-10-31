@@ -10,7 +10,9 @@ import java.nio.file.Path;
 import java.util.List;
 import org.example.alert.Alert;
 import org.example.alert.AlertService;
+import org.example.report.ArchiveReport;
 import org.example.report.ChamberSummaryTracker;
+import org.example.report.DailyReport;
 import org.example.report.ReportService;
 import org.example.resource.ResourceMeter;
 import org.junit.jupiter.api.Test;
@@ -24,7 +26,8 @@ class ReportPersistenceTest {
     private ReportService service() {
         AlertService alerts = new AlertService(List.of());
         alerts.raise(new Alert("CH1", "Tomato", "CH1 Tomato High Temp"));
-        ReportService reports = new ReportService(alerts, new ResourceMeter(), new ChamberSummaryTracker());
+        ReportService reports = new ReportService(alerts, new ResourceMeter(), new ChamberSummaryTracker(), new DailyReport(),
+                new ArchiveReport());
         reports.archiveAlerts();
         return reports;
     }

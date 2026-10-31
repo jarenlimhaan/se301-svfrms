@@ -20,12 +20,17 @@ public final class ReportService {
     private final AlertLedger alerts;
     private final UsageTotals meter;
     private final ChamberSummaries summaries;
+    private final Report dailyReport;
+    private final Report archiveReport;
     private final List<String> activity = Collections.synchronizedList(new ArrayList<>());
 
-    public ReportService(AlertLedger alerts, UsageTotals meter, ChamberSummaries summaries) {
+    public ReportService(AlertLedger alerts, UsageTotals meter, ChamberSummaries summaries, Report dailyReport,
+            Report archiveReport) {
         this.alerts = alerts;
         this.meter = meter;
         this.summaries = summaries;
+        this.dailyReport = dailyReport;
+        this.archiveReport = archiveReport;
     }
 
     public void archiveAlerts() {
@@ -40,7 +45,7 @@ public final class ReportService {
     }
 
     public void generateDailyReport() {
-        new DailyReport().render(snapshot()).forEach(System.out::println);
+        dailyReport.render(snapshot()).forEach(System.out::println);
         activity.add("Daily Report");
     }
 
@@ -50,8 +55,9 @@ public final class ReportService {
      * @throws IOException if the report could not be written; the caller decides how to fail
      */
     public void saveArchiveReport(Path file) throws IOException {
-        Files.createDirectories(file.toAbsolutePath().getParent());
-        Files.write(file, new ArchiveReport().render(snapshot()), StandardCharsets.UTF_8);
+        Path dir = file.getParent(); // kept relative so error messages name the path as legacy did
+        if (dir != null) Files.createDirectories(dir);
+        Files.write(file, archiveReport.render(snapshot()), StandardCharsets.UTF_8);
         System.out.println("Archive report saved to: " + file.toAbsolutePath());
     }
 

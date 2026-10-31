@@ -16,7 +16,9 @@ import org.example.device.DispatchStats;
 import org.example.device.StaleRequestPolicy;
 import org.example.monitoring.ResponsePolicy;
 import org.example.monitoring.SensorProcessor;
+import org.example.report.ArchiveReport;
 import org.example.report.ChamberSummaryTracker;
+import org.example.report.DailyReport;
 import org.example.report.ReportService;
 import org.example.resource.ResourceMeter;
 import org.example.sensor.ChamberRegistry;
@@ -80,7 +82,7 @@ public final class SVFRMS {
         AlertListener alertPrinter = cli.severityAlerts() ? new SeverityAlertPrinter() : new ConsoleAlertPrinter();
         AlertService alerts = new AlertService(List.of(summaries, alertPrinter));
         ChamberRegistry chamberStates = new ChamberRegistry();
-        ReportService reports = new ReportService(alerts, meter, summaries);
+        ReportService reports = new ReportService(alerts, meter, summaries, new DailyReport(), new ArchiveReport());
         ReadingSource readings = RandomReadingSource.legacy();
 
         ControlDispatcher dispatcher = new ControlDispatcher(chamberStates, CONTROL_QUEUE_CAPACITY,
@@ -109,8 +111,8 @@ public final class SVFRMS {
         try {
             reports.saveArchiveReport(reportFile);
         } catch (IOException e) {
-            // Legacy message prefix; the exception type says why (e.g. FileAlreadyExistsException, AccessDeniedException).
-            System.out.println("Could not save archive report: " + e.getClass().getSimpleName() + " " + e.getMessage());
+            System.out.println("Could not save archive report: " + e.getMessage()); // legacy text
+            System.err.println("  cause: " + e); // the exception type says why (e.g. FileAlreadyExistsException)
             return EXIT_ARCHIVE_NOT_SAVED;
         }
         return EXIT_OK;
