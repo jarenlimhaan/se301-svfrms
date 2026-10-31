@@ -60,6 +60,11 @@ public final class SVFRMS {
 
     /** Runs the whole facility once and returns the exit status (never calls {@code System.exit}). */
     static int run(String[] args, Path reportFile) throws InterruptedException {
+        return run(args, reportFile, RandomReadingSource.legacy());
+    }
+
+    /** As {@link #run(String[], Path)}, with the sensor feed supplied (tests use this to inject failures). */
+    static int run(String[] args, Path reportFile, ReadingSource readings) throws InterruptedException {
         CommandLine cli;
         CropRegistry crops;
         try {
@@ -83,7 +88,6 @@ public final class SVFRMS {
         AlertService alerts = new AlertService(List.of(summaries, alertPrinter));
         ChamberRegistry chamberStates = new ChamberRegistry();
         ReportService reports = new ReportService(alerts, meter, summaries, new DailyReport(), new ArchiveReport());
-        ReadingSource readings = RandomReadingSource.legacy();
 
         ControlDispatcher dispatcher = new ControlDispatcher(chamberStates, CONTROL_QUEUE_CAPACITY,
                 List.of(summaries, new ConsoleControlPrinter()), CONTROL_SHUTDOWN_TIMEOUT, STALE_REQUESTS);

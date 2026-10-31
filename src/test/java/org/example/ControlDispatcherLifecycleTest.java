@@ -131,4 +131,27 @@ class ControlDispatcherLifecycleTest {
             assertTrue(e.getMessage().contains("did not finish"), e.getMessage());
         });
     }
+
+    @Test
+    void zeroOrNegativeShutdownTimeoutIsRejected() {
+        assertThrows(IllegalArgumentException.class,
+                () -> new ControlDispatcher(chambers, 2, List.of(), Duration.ZERO));
+        assertThrows(IllegalArgumentException.class,
+                () -> new ControlDispatcher(chambers, 2, List.of(), Duration.ofMillis(-1)));
+    }
+
+    /** A timeout below 1 ms must not become join(0), which would wait forever. */
+    @Test
+    void subMillisecondTimeoutStillBoundsClose() {
+        assertTimeoutPreemptively(LIMIT, () -> {
+            CountDownLatch entered = new CountDownLatch(1), never = new CountDownLatch(1);
+            ControlDispatcher dispatcher = new ControlDispatcher(chambers, 2, List.of(), Duration.ofNanos(500_000));
+            dispatcher.start();
+            dispatcher.request("CH1", blocking(entered, never, false));
+            entered.await();
+
+            IllegalStateException e = assertThrows(IllegalStateException.class, dispatcher::close);
+            assertTrue(e.getMessage().contains("did not finish"), e.getMessage());
+        });
+    }
 }

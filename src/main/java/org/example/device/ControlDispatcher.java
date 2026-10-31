@@ -23,7 +23,7 @@ public final class ControlDispatcher implements DeviceController, AutoCloseable 
     private enum State { NEW, RUNNING, SHUTTING_DOWN, TERMINATED }
 
     private static final Duration DEFAULT_SHUTDOWN_TIMEOUT = Duration.ofSeconds(30);
-    private static final long INTERRUPT_GRACE_MILLIS = 500;
+    private static final Duration INTERRUPT_GRACE = Duration.ofMillis(500);
 
     private final ClosableBoundedQueue<DeviceRequest> queue;
     private final RequestExecutor executor;
@@ -47,7 +47,12 @@ public final class ControlDispatcher implements DeviceController, AutoCloseable 
                              Duration shutdownTimeout, StaleRequestPolicy stalePolicy) {
         this.queue = new ClosableBoundedQueue<>(capacity);
         this.executor = new RequestExecutor(chambers, listeners, Objects.requireNonNull(stalePolicy, "stalePolicy"));
-        this.shutdownTimeout = Objects.requireNonNull(shutdownTimeout, "shutdownTimeout");
+        Objects.requireNonNull(shutdownTimeout, "shutdownTimeout");
+        // Thread.join(0) would wait forever, so a zero or negative timeout is a configuration error.
+        if (shutdownTimeout.isZero() || shutdownTimeout.isNegative()) {
+            throw new IllegalArgumentException("shutdown timeout must be positive: " + shutdownTimeout);
+        }
+        this.shutdownTimeout = shutdownTimeout;
     }
 
     public synchronized void start() {
@@ -110,10 +115,10 @@ public final class ControlDispatcher implements DeviceController, AutoCloseable 
         }
         try {
             queue.close();
-            awaitWorker(shutdownTimeout.toMillis());
+            awaitWorker(shutdownTimeout);
             if (worker.isAlive()) {
                 worker.interrupt();
-                awaitWorker(INTERRUPT_GRACE_MILLIS);
+                awaitWorker(INTERRUPT_GRACE);
                 throw new IllegalStateException("control worker did not finish within " + shutdownTimeout
                         + "; it was interrupted and pending device requests may not have run");
             }
@@ -127,10 +132,14 @@ public final class ControlDispatcher implements DeviceController, AutoCloseable 
         }
     }
 
-    /** Joins the worker; AutoCloseable.close should not throw InterruptedException, so restore the flag instead. */
-    private void awaitWorker(long millis) {
+    /**
+     * Waits up to {@code timeout} for the worker. Uses the Duration overload, which never treats a
+     * short timeout as "wait forever" the way {@code join(0)} does. AutoCloseable.close should not
+     * throw InterruptedException, so the interrupt flag is restored instead.
+     */
+    private void awaitWorker(Duration timeout) {
         try {
-            worker.join(millis);
+            worker.join(timeout);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             worker.interrupt();

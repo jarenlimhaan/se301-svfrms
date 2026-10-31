@@ -25,7 +25,7 @@ The legacy code is one 393-line class, `SVFRMS`, whose main components are:
 | D1 | **God class** (large class, divergent change): sensing, crop rules, devices, alerts, reports, file I/O, threads and simulation in one class. | whole file | SRP |
 | D2 | **Crop rules hard-coded** (long method, duplicated code, shotgun surgery): adding Kale means a new `if` block in up to three sensor branches of `processSensor`; thresholds, costs and devices are **magic numbers** repeated per crop. | lines 145–188 | OCP |
 | D3 | **Stringly-typed dispatch** (primitive obsession): `handleEvent("TRACK_ALERT", …)`, `activateControl(…, "Cooling Fan")`; queue items are `chamber + "\|" + control`, split again later. Typos fail silently; a `\|` in a chamber name breaks parsing. | lines 62–129, 136, 269 | OCP, type safety |
-| D4 | **Inheritance misuse (refused bequest).** `ChamberThread` and `ControlThread` extend `Thread` only to reuse `run()`; they are tasks, not threads. There is no type hierarchy to substitute, so LSP is not *violated* so much as never designed for. Extending `Thread` also ties each task to its own thread, and `ControlThread` swallows every exception around `wait()`, so `interrupt()` cannot stop it (a reliability smell, D8). | lines 251–273, 258, 275 | LSP / composition over inheritance |
+| D4 | **Inheritance misuse, broken interruption contract.** `ChamberThread` and `ControlThread` extend `Thread` although they are tasks, not specialised threads (refused bequest). `ControlThread` also swallows every exception around `wait()`, so the cooperative cancellation every `Thread` should support, `interrupt()`, is silently discarded: the subclass does not behave as its base type promises. | lines 251–273, 258, 275 | LSP / composition over inheritance |
 | D5 | **Fat, implicit interface**: `handleEvent` is one entry point for six unrelated operations; every caller depends on all of them. | line 62 | ISP |
 | D6 | **Dependence on globals and concretions**: every collaborator is a `public static` field; nothing can be replaced or tested alone. | lines 10–31 | DIP |
 | D7 | **Dead code**: `waterPumpLock`, `nutrientLock`, `irrigationCycle`, `feedingCycle`, `showAlerts`, `showLogs`, the `ALERT_LOG` branch, commented-out `sleep` calls — none is ever called. | lines 28–29, 66–68, 224, 243–307, 385 | Clean code |
@@ -64,7 +64,7 @@ Four `ChamberThread`s and one `ControlThread` share all static state with no con
 | Chamber summary counts wrong (C5) | 1 | 0 |
 | "Active Alerts" in the daily report (C6) | 0 in 130 runs, N in 20 | 0 in all 150 |
 
-No hang (C7) occurred in these runs because the NPEs hit chamber threads. `legacy/LegacyHangDemo.java` forces the same NPE in the control thread, by swapping the public, non-final `chamberStates` field (D6) without editing the legacy code. It hangs in 5 of 5 runs: all four chamber threads wait forever in `addControlRequest` (line 134) and `main` never returns. The refactored version fails instead, rejecting requests and exiting with status 1 (`ControlDispatcherLifecycleTest`).
+No hang (C7) occurred in these runs because the NPEs hit chamber threads. `legacy/LegacyHangDemo.java` forces the same NPE in the control thread, by swapping the public, non-final `chamberStates` field (D6) without editing the legacy code. It hangs in 5 of 5 runs: all four chamber threads wait forever in `addControlRequest` (line 134) and `main` never returns. Refactored, a dead worker wakes and rejects blocked producers (`ControlDispatcherLifecycleTest`), and `SVFRMS.run` turns the failed run into exit status 1 with no report (`SimulationRunnerTest`).
 
 ## 3. Proposed Design
 
@@ -75,7 +75,7 @@ No hang (C7) occurred in these runs because the NPEs hit chamber threads. `legac
 | **SRP** (D1) | Nine packages plus the composition root, one reason to change each (§4). The old dispatcher was split again: `ControlDispatcher` owns only the worker's lifecycle, `ClosableBoundedQueue` only blocking, `RequestExecutor` only running a request, `Listeners` only fault-isolated notification. |
 | **OCP** (D2, D3) | Crops are data: a `CropProfile` holds a `Range` per sensor and the cost per breach. `SensorProcessor` has one generic rule (*breach → alert → cost → device*); no crop name appears in logic. Crops can even be added or removed at run time with no rebuild (`--add-crop`, `--crops=FILE`, `--remove-crop`). Every "for each sensor" loop iterates `SensorType`. |
 | **LSP** (D4) | Composition replaces `Thread` inheritance: chamber work is a `Callable` run by an `ExecutorService`, and the dispatcher owns its worker. Substitution is now real and tested: any `Device`, `Report` or `ReadingSource` implementation can replace another (tests swap in scripted reading sources, throwing devices and failing listeners), and every implementation keeps its interface's contract (interrupts are restored, never swallowed). |
-| **ISP** (D5) | One-method roles (`AlertListener`, `DeviceListener`, `DeviceController`, `Device`, `Report`, `ReadingSource`). Services expose a separate interface per client: `AlertService` is an `AlertSink` to monitoring and an `AlertLedger` to reporting; `ResourceMeter` is a `UsageRecorder` and `UsageTotals`. |
+| **ISP** (D5) | Small, client-specific role interfaces (`AlertListener`, `DeviceListener`, `DeviceController`, `Device`, `Report`, `ReadingSource`): each client depends only on what it uses. Services expose a separate interface per client: `AlertService` is an `AlertSink` to monitoring and an `AlertLedger` to reporting; `ResourceMeter` is a `UsageRecorder` and `UsageTotals`. |
 | **DIP** (D6) | Constructor injection: the composition root (`SVFRMS.run`, `CommandLine`) chooses and creates every service and strategy, including the `Report`s handed to `ReportService`. `SensorProcessor`, `ReportService`, `ChamberSimulation` and `ControlDispatcher` receive only interfaces or immutable values, which `ArchitectureTest` checks by reflection. The one concrete type they share is `ChamberState`, a thread-safe data holder that is not a service and has no alternative implementation. |
 
 Dead code was removed (D7); I/O errors now set the exit status, and interrupts are restored (D8).
@@ -89,10 +89,10 @@ Dead code was removed (D7); I/O errors now set the exit status, and interrupts a
 | C3, C5 | `AtomicInteger` counters in `ResourceMeter`; alert counters change under the same lock as the alert list; per-chamber summaries are `synchronized`. |
 | C4 | `ChamberState` is an `EnumMap` behind `synchronized` methods; device changes go through atomic `adjust` calls. Each reading gets a version and each device request carries its triggering reading, so the inherited ordering issue (§2.2) is detected in the same atomic step as the change: stale runs are counted, and `StaleRequestPolicy.SKIP` drops them (default `EXECUTE` keeps legacy behaviour). |
 | C6 | Archive, then daily report, sequentially, after all producers and the consumer have finished. |
-| C7 | `ClosableBoundedQueue` (one `ReentrantLock`, two `Condition`s) replaces `wait/notify`. If the worker dies, `abort` wakes every blocked producer at once with an error: no hang and no polling. `close()` rejects new requests atomically, lets the worker drain the queue, waits at most 30 s and reports any request not executed. Devices that throw are logged and counted; the worker carries on. Chamber tasks are `Callable`s and `SimulationRunner` checks every `Future`, so a failed or interrupted chamber fails the run (exit 1). |
+| C7 | `ClosableBoundedQueue` (one `ReentrantLock`, two `Condition`s) replaces `wait/notify`. If the worker dies, `abort` wakes every blocked producer at once with an error: no hang and no polling. Shutdown takes effect when the queue closes (admission is decided under the queue's lock): a request admitted before then runs, one after is rejected. `close()` lets the worker drain the queue, waits at most 30 s and reports any request not executed. Devices that throw are logged and counted; the worker carries on. Chamber tasks are `Callable`s and `SimulationRunner` checks every `Future`, so a failed or interrupted chamber fails the run (exit 1). |
 | C8 | **No nested locks anywhere**, by construction: each component guards its own state with one lock, and listeners and device code run outside every lock. Reports read an immutable `FacilitySnapshot`. |
 
-Tests: `countersSurviveConcurrentUpdates` (8 threads × 5 000 updates, exact totals), `closeDuringHeavyProductionLosesNothing` (close races 8 producers; every request runs or is rejected), `deviceCodeRunsWithNoChamberLockHeld`, worker death with a full queue, a hanging device, the stale-fan scenario.
+Tests include exact totals under 8 threads × 5 000 updates, `close()` racing 8 producers (every request runs or is rejected), no lock held during device code, worker death, a hanging device and the stale-fan scenario.
 
 ### 3.3 Behaviour preservation
 
@@ -239,7 +239,7 @@ classDiagram
 | New alert channel or severity routing | A new `AlertListener` registered in `SVFRMS.run`; a faulty one cannot disturb the others. |
 | Real sensors | A new `ReadingSource`; an unresponsive sensor already raises a Sensor Failure alert. |
 
-Every change is additive and local. Constructor injection lets each component be tested alone: 66 tests in 15 classes cover behaviour parity, every crop bound, validation, concurrency, shutdown, run-time crops and exit codes.
+Every change is additive and local. Constructor injection lets each component be tested alone: 69 tests in 15 classes cover behaviour parity, every crop bound, validation, concurrency, shutdown, run-time crops and exit codes.
 
 ## 6. Design Patterns
 
@@ -256,4 +256,4 @@ Supporting idioms: **Static factory methods** (`CropCatalog.defaultRegistry()`, 
 
 ## 7. Build and Run
 
-`mvn clean package` builds `target/run.jar` and runs the 66 tests. `java -jar run.jar` runs the legacy four chambers; `java -jar run.jar --help` lists the options.
+`mvn clean package` builds `target/run.jar` and runs the 69 tests. `java -jar run.jar` runs the legacy four chambers; `java -jar run.jar --help` lists the options.

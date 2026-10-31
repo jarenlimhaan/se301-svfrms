@@ -55,7 +55,7 @@ td { border: 1px solid #c3cfdc; padding: 2px 4px; vertical-align: top; }
 tr { page-break-inside: avoid; }
 .diagram { text-align: center; margin: 4px 0 6px; page-break-inside: avoid; }
 .diagram img { max-width: 100%; }
-.d0 img { max-height: 105mm; } .d1 img { max-height: 80mm; }
+.d0 img { max-height: 110mm; } .d1 img { max-height: 80mm; }
 .pair { display: flex; gap: 6mm; align-items: flex-start; page-break-inside: avoid; }
 .pair .diagram { flex: 1; margin: 0; } .pair .diagram:first-child { flex: 1.9; } .pair .diagram img { width: 100%; height: auto; }
 p:has(+ .pair) { page-break-after: avoid; break-after: avoid; }
