@@ -73,7 +73,7 @@ Always run `mvn clean package` and confirm **all tests pass** before committing.
 - ✅ Review findings 1–9 fixed; strict rubric pass done (DIP/ISP role interfaces, LSP analysis, Lock/Condition queue, severity, Sensor Failure incl. unresponsive sensors, run-time crops, exit codes)
 - ✅ Verified against legacy: same output line formats over 25 runs each; 150-run defect comparison is in README §2.3
 - ✅ `README.md` rewritten and `README.pdf` regenerated (cover + 5 pages)
-- ⬜ Run `mvn clean package` on JDK 25 (tests were last run with a JUnit stand-in on JDK 21), then `cp target/run.jar run.jar`
+- ✅ `mvn clean package` on JDK 25 (66/66 tests pass); `run.jar` rebuilt from it (Java 25 bytecode) (31 Oct)
 - ⬜ **Presentation slides** for 2 Nov: 5 minutes plus a 2-minute demo covering legacy issues, SOLID and the refactor, a new-crop demo,
   the concurrency fixes, and evidence of maintainability and reliability
 - ⬜ Commit, then one member submits the zip on eLearn before the deadline
