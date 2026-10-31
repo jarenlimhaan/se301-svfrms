@@ -13,7 +13,6 @@ import org.example.crop.CropRegistry;
 import org.example.device.ConsoleControlPrinter;
 import org.example.device.ControlDispatcher;
 import org.example.device.DispatchStats;
-import org.example.device.StaleRequestPolicy;
 import org.example.monitoring.ResponsePolicy;
 import org.example.monitoring.SensorProcessor;
 import org.example.report.ArchiveReport;
@@ -22,7 +21,6 @@ import org.example.report.DailyReport;
 import org.example.report.ReportService;
 import org.example.resource.ResourceMeter;
 import org.example.sensor.ChamberRegistry;
-import org.example.sensor.SensorLog;
 import org.example.simulation.ChamberSimulation;
 import org.example.simulation.RandomReadingSource;
 import org.example.simulation.ReadingSource;
@@ -48,8 +46,6 @@ public final class SVFRMS {
     private static final int CONTROL_QUEUE_CAPACITY = 5;
     private static final int CYCLES_PER_CHAMBER = 20;
     private static final Duration CONTROL_SHUTDOWN_TIMEOUT = Duration.ofSeconds(30);
-    /** Legacy behaviour: a queued device runs even if a newer reading arrived. SKIP revalidates instead. */
-    private static final StaleRequestPolicy STALE_REQUESTS = StaleRequestPolicy.EXECUTE;
 
     private SVFRMS() {}
 
@@ -90,10 +86,10 @@ public final class SVFRMS {
         ReportService reports = new ReportService(alerts, meter, summaries, new DailyReport(), new ArchiveReport());
 
         ControlDispatcher dispatcher = new ControlDispatcher(chamberStates, CONTROL_QUEUE_CAPACITY,
-                List.of(summaries, new ConsoleControlPrinter()), CONTROL_SHUTDOWN_TIMEOUT, STALE_REQUESTS);
+                List.of(summaries, new ConsoleControlPrinter()), CONTROL_SHUTDOWN_TIMEOUT);
         try (dispatcher) {
             dispatcher.start();
-            SensorProcessor processor = new SensorProcessor(crops, chamberStates, new SensorLog(), alerts, meter,
+            SensorProcessor processor = new SensorProcessor(crops, chamberStates, alerts, meter,
                     ResponsePolicy.standard(), dispatcher);
             List<ChamberSimulation> simulations = new ArrayList<>();
             cli.chambers().forEach((chamber, crop) -> simulations.add(
@@ -124,9 +120,9 @@ public final class SVFRMS {
 
     /** Tells the operator (on stderr) about failures that were isolated during the run. Silent when all went well. */
     private static void reportProblems(DispatchStats stats, int alertListenerFailures) {
-        if (stats.hasProblems() || stats.skipped() > 0 || alertListenerFailures > 0) {
+        if (stats.hasProblems() || alertListenerFailures > 0) {
             System.err.println("WARNING: device requests: " + stats.executed() + " executed, " + stats.failed()
-                    + " failed, " + stats.skipped() + " skipped as stale; listener failures: "
+                    + " failed; listener failures: "
                     + (stats.listenerFailures() + alertListenerFailures) + " (details above)");
         }
     }

@@ -4,7 +4,6 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import org.example.sensor.ChamberStates;
-import org.example.sensor.Reading;
 
 /**
  * Producer-consumer: chamber threads queue {@link DeviceRequest}s (commands) into a bounded queue;
@@ -22,7 +21,6 @@ import org.example.sensor.Reading;
 public final class ControlDispatcher implements DeviceController, AutoCloseable {
     private enum State { NEW, RUNNING, SHUTTING_DOWN, TERMINATED }
 
-    private static final Duration DEFAULT_SHUTDOWN_TIMEOUT = Duration.ofSeconds(30);
     private static final Duration INTERRUPT_GRACE = Duration.ofMillis(500);
 
     private final ClosableBoundedQueue<DeviceRequest> queue;
@@ -34,19 +32,10 @@ public final class ControlDispatcher implements DeviceController, AutoCloseable 
     /** Why the worker stopped before the queue was closed and drained, or {@code null}. */
     private volatile Throwable workerFailure;
 
-    public ControlDispatcher(ChamberStates chambers, int capacity, List<DeviceListener> listeners) {
-        this(chambers, capacity, listeners, DEFAULT_SHUTDOWN_TIMEOUT, StaleRequestPolicy.EXECUTE);
-    }
-
     public ControlDispatcher(ChamberStates chambers, int capacity, List<DeviceListener> listeners,
                              Duration shutdownTimeout) {
-        this(chambers, capacity, listeners, shutdownTimeout, StaleRequestPolicy.EXECUTE);
-    }
-
-    public ControlDispatcher(ChamberStates chambers, int capacity, List<DeviceListener> listeners,
-                             Duration shutdownTimeout, StaleRequestPolicy stalePolicy) {
         this.queue = new ClosableBoundedQueue<>(capacity);
-        this.executor = new RequestExecutor(chambers, listeners, Objects.requireNonNull(stalePolicy, "stalePolicy"));
+        this.executor = new RequestExecutor(chambers, listeners);
         Objects.requireNonNull(shutdownTimeout, "shutdownTimeout");
         // Thread.join(0) would wait forever, so a zero or negative timeout is a configuration error.
         if (shutdownTimeout.isZero() || shutdownTimeout.isNegative()) {
@@ -67,12 +56,12 @@ public final class ControlDispatcher implements DeviceController, AutoCloseable 
      * @throws IllegalStateException if the dispatcher was never started, is shutting down, or its worker died
      */
     @Override
-    public void request(String chamber, Device device, Reading trigger) throws InterruptedException {
+    public void request(String chamber, Device device) throws InterruptedException {
         if (state == State.NEW) throw new IllegalStateException("dispatcher not started; request rejected");
-        queue.put(new DeviceRequest(chamber, device, trigger));
+        queue.put(new DeviceRequest(chamber, device));
     }
 
-    /** Outcome counts so far: executed, failed, stale, skipped and listener failures. */
+    /** Outcome counts so far: executed, failed and listener failures. */
     public DispatchStats stats() {
         return executor.stats();
     }
@@ -105,13 +94,19 @@ public final class ControlDispatcher implements DeviceController, AutoCloseable 
      */
     @Override
     public void close() {
+        State previous;
         synchronized (this) {
-            if (state == State.NEW) {
-                state = State.TERMINATED;
-                return;
-            }
-            if (state != State.RUNNING) return; // already closed
-            state = State.SHUTTING_DOWN;
+            previous = state;
+            if (previous == State.RUNNING) state = State.SHUTTING_DOWN;
+            else if (previous == State.NEW) state = State.TERMINATED;
+        }
+        if (previous == State.NEW) {
+            queue.close(); // never started: later requests are rejected, not queued for nobody
+            return;
+        }
+        if (previous != State.RUNNING) { // another thread is closing (or has closed): wait for its drain
+            awaitWorker(shutdownTimeout);
+            return;
         }
         try {
             queue.close();

@@ -3,6 +3,7 @@ package org.example;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -10,6 +11,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.example.alert.Alert;
 import org.example.alert.AlertService;
+import org.example.alert.Severity;
 import org.example.crop.CropCatalog;
 import org.example.crop.CropProfile;
 import org.example.crop.CropRegistry;
@@ -18,9 +20,10 @@ import org.example.device.Devices;
 import org.example.monitoring.ResponsePolicy;
 import org.example.monitoring.SensorProcessor;
 import org.example.report.ChamberSummaryTracker;
+import org.example.resource.Resource;
 import org.example.resource.ResourceMeter;
+import org.example.resource.Usage;
 import org.example.sensor.ChamberRegistry;
-import org.example.sensor.SensorLog;
 import org.example.sensor.SensorType;
 import org.junit.jupiter.api.Test;
 
@@ -29,8 +32,7 @@ class SVFRMSTest {
     private final ResourceMeter meter = new ResourceMeter();
     private final AlertService alerts = new AlertService(List.of());
     private final List<String> requested = Collections.synchronizedList(new ArrayList<>());
-    private final SensorProcessor processor = new SensorProcessor(crops, new ChamberRegistry(), new SensorLog(),
-            alerts, meter, ResponsePolicy.standard(), (chamber, device, trigger) -> requested.add(chamber + "|" + device.name()));
+    private final SensorProcessor processor = new SensorProcessor(crops, new ChamberRegistry(), alerts, meter, ResponsePolicy.standard(), (chamber, device) -> requested.add(chamber + "|" + device.name()));
 
     private List<String> alertMessages() {
         alerts.archiveActive();
@@ -77,8 +79,8 @@ class SVFRMSTest {
             for (int t = 0; t < threads; t++) {
                 pool.execute(() -> {
                     for (int i = 0; i < perThread; i++) {
-                        alerts.raise(new Alert("CH1", "Tomato", "x"));
-                        meter.addWater(1);
+                        alerts.raise(new Alert("CH1", "Tomato", "x", Severity.WARNING));
+                        meter.record(new Usage(Resource.WATER, 1));
                     }
                 });
             }
@@ -92,7 +94,7 @@ class SVFRMSTest {
     void dispatcherDrainsEveryRequestBeforeClosing() throws Exception {
         ChamberSummaryTracker tracker = new ChamberSummaryTracker();
         ChamberRegistry chambers = new ChamberRegistry();
-        try (ControlDispatcher dispatcher = new ControlDispatcher(chambers, 2, List.of(tracker))) {
+        try (ControlDispatcher dispatcher = new ControlDispatcher(chambers, 2, List.of(tracker), Duration.ofSeconds(30))) {
             dispatcher.start();
             for (int i = 0; i < 100; i++) dispatcher.request("CH1", Devices.GROW_LIGHT);
         }

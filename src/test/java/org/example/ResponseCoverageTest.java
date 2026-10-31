@@ -20,7 +20,6 @@ import org.example.resource.ResourceMeter;
 import org.example.sensor.Breach;
 import org.example.sensor.ChamberRegistry;
 import org.example.sensor.Direction;
-import org.example.sensor.SensorLog;
 import org.example.sensor.SensorType;
 import org.junit.jupiter.api.Test;
 
@@ -29,8 +28,7 @@ class ResponseCoverageTest {
     private final CropRegistry crops = CropCatalog.defaultRegistry();
     private final AlertService alerts = new AlertService(List.of());
     private final List<String> requested = new ArrayList<>();
-    private final SensorProcessor processor = new SensorProcessor(crops, new ChamberRegistry(), new SensorLog(),
-            alerts, new ResourceMeter(), ResponsePolicy.standard(), (chamber, device, trigger) -> requested.add(device.name()));
+    private final SensorProcessor processor = new SensorProcessor(crops, new ChamberRegistry(), alerts, new ResourceMeter(), ResponsePolicy.standard(), (chamber, device) -> requested.add(device.name()));
 
     private List<String> alertMessages() {
         alerts.archiveActive();
@@ -72,7 +70,7 @@ class ResponseCoverageTest {
 
     @Test
     void customLightMaximumGetsHighLightAlert() throws Exception {
-        crops.register(CropProfile.builder("Microgreens").light(500, 800).build());
+        crops.register(CropProfile.builder("Microgreens").range(SensorType.LIGHT, new Range(500, 800)).build());
         processor.process("CH7", "Microgreens", SensorType.LIGHT, 950);
         assertEquals(List.of("CH7 High Light Level"), alertMessages());
     }

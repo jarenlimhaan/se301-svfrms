@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.util.List;
 import org.example.alert.Alert;
 import org.example.alert.AlertService;
+import org.example.alert.Severity;
 import org.example.report.ArchiveReport;
 import org.example.report.ChamberSummaryTracker;
 import org.example.report.DailyReport;
@@ -25,7 +26,7 @@ class ReportPersistenceTest {
 
     private ReportService service() {
         AlertService alerts = new AlertService(List.of());
-        alerts.raise(new Alert("CH1", "Tomato", "CH1 Tomato High Temp"));
+        alerts.raise(new Alert("CH1", "Tomato", "CH1 Tomato High Temp", Severity.WARNING));
         ReportService reports = new ReportService(alerts, new ResourceMeter(), new ChamberSummaryTracker(), new DailyReport(),
                 new ArchiveReport());
         reports.archiveAlerts();

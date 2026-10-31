@@ -11,8 +11,6 @@ import org.example.resource.UsageRecorder;
 import org.example.sensor.Breach;
 import org.example.sensor.ChamberStates;
 import org.example.sensor.Direction;
-import org.example.sensor.Reading;
-import org.example.sensor.ReadingLog;
 import org.example.sensor.SensorType;
 
 /**
@@ -26,17 +24,15 @@ import org.example.sensor.SensorType;
 public final class SensorProcessor implements ReadingProcessor {
     private final CropLookup crops;
     private final ChamberStates chambers;
-    private final ReadingLog log;
     private final AlertSink alerts;
     private final UsageRecorder usage;
     private final ResponsePolicy policy;
     private final DeviceController controller;
 
-    public SensorProcessor(CropLookup crops, ChamberStates chambers, ReadingLog log, AlertSink alerts,
+    public SensorProcessor(CropLookup crops, ChamberStates chambers, AlertSink alerts,
                            UsageRecorder usage, ResponsePolicy policy, DeviceController controller) {
         this.crops = crops;
         this.chambers = chambers;
-        this.log = log;
         this.alerts = alerts;
         this.usage = usage;
         this.policy = policy;
@@ -45,12 +41,11 @@ public final class SensorProcessor implements ReadingProcessor {
 
     @Override
     public void process(String chamber, String crop, SensorType sensor, double value) throws InterruptedException {
-        log.add("Processing " + crop + " " + sensor.label() + " = " + value);
         if (!sensor.isValid(value)) {
             sensorFailure(chamber, crop, "invalid " + sensor.label() + " reading " + value);
             return;
         }
-        Reading reading = chambers.state(chamber).set(sensor, value);
+        chambers.record(chamber, sensor, value);
 
         // Unknown crops still get the facility-wide light and nutrient checks, as in the legacy system.
         CropProfile profile = crops.find(crop).orElseGet(() -> CropProfile.builder(crop).build());
@@ -64,13 +59,12 @@ public final class SensorProcessor implements ReadingProcessor {
         alerts.raise(new Alert(chamber, crop, response.alertMessage(chamber, crop), response.severity()));
         profile.cost(breach).ifPresent(usage::record);
         if (response.device() != null) {
-            controller.request(chamber, response.device(), reading);
+            controller.request(chamber, response.device());
         }
     }
 
     @Override
     public void reportMissing(String chamber, String crop, SensorType sensor) {
-        log.add("No reading from " + crop + " " + sensor.label());
         sensorFailure(chamber, crop, "no " + sensor.label() + " reading");
     }
 

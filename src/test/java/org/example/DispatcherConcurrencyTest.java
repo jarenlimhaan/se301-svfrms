@@ -38,7 +38,7 @@ class DispatcherConcurrencyTest {
                 return "probed";
             }
         };
-        ControlDispatcher dispatcher = new ControlDispatcher(chambers, 2, List.of());
+        ControlDispatcher dispatcher = new ControlDispatcher(chambers, 2, List.of(), Duration.ofSeconds(30));
         dispatcher.start();
         dispatcher.request("CH1", probe);
         dispatcher.close();
@@ -52,7 +52,7 @@ class DispatcherConcurrencyTest {
         assertTimeoutPreemptively(LIMIT, () -> {
             for (int round = 0; round < 20; round++) {
                 ChamberRegistry chambers = new ChamberRegistry();
-                ControlDispatcher dispatcher = new ControlDispatcher(chambers, 3, List.of());
+                ControlDispatcher dispatcher = new ControlDispatcher(chambers, 3, List.of(), Duration.ofSeconds(30));
                 dispatcher.start();
                 AtomicInteger accepted = new AtomicInteger(), rejected = new AtomicInteger();
                 CountDownLatch go = new CountDownLatch(1);

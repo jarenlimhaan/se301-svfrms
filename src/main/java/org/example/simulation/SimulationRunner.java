@@ -32,30 +32,38 @@ public final class SimulationRunner {
         List<Throwable> causes = new ArrayList<>();
         try (ExecutorService pool = Executors.newFixedThreadPool(simulations.size())) {
             simulations.forEach(sim -> futures.put(sim, pool.submit(sim)));
-            for (Map.Entry<ChamberSimulation, Future<Integer>> entry : futures.entrySet()) {
-                ChamberSimulation sim = entry.getKey();
-                try {
-                    int completed = entry.getValue().get();
-                    if (completed != sim.cycles()) {
-                        failures.add(sim.chamber() + " completed " + completed + " of " + sim.cycles() + " cycles");
-                    }
-                } catch (ExecutionException e) {
-                    failures.add(sim.chamber() + " failed: " + e.getCause());
-                    causes.add(e.getCause());
-                } catch (CancellationException e) {
-                    failures.add(sim.chamber() + " was cancelled");
-                    causes.add(e);
-                }
+            try {
+                collect(futures, failures, causes);
+            } catch (InterruptedException e) {
+                // Cancel before the pool's close() waits for the tasks; otherwise it would wait for every chamber.
+                pool.shutdownNow();
+                throw e;
             }
-        } catch (InterruptedException e) {
-            futures.values().forEach(f -> f.cancel(true));
-            throw e;
         }
         if (!failures.isEmpty()) {
             SimulationFailedException failure = new SimulationFailedException(
                     "Simulation incomplete: " + String.join("; ", failures));
             causes.forEach(failure::addSuppressed);
             throw failure;
+        }
+    }
+
+    private static void collect(Map<ChamberSimulation, Future<Integer>> futures, List<String> failures,
+                                List<Throwable> causes) throws InterruptedException {
+        for (Map.Entry<ChamberSimulation, Future<Integer>> entry : futures.entrySet()) {
+            ChamberSimulation sim = entry.getKey();
+            try {
+                int completed = entry.getValue().get();
+                if (completed != sim.cycles()) {
+                    failures.add(sim.chamber() + " completed " + completed + " of " + sim.cycles() + " cycles");
+                }
+            } catch (ExecutionException e) {
+                failures.add(sim.chamber() + " failed: " + e.getCause());
+                causes.add(e.getCause());
+            } catch (CancellationException e) {
+                failures.add(sim.chamber() + " was cancelled");
+                causes.add(e);
+            }
         }
     }
 }

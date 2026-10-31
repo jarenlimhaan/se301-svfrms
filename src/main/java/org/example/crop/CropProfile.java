@@ -74,8 +74,6 @@ public final class CropProfile {
 
         public Builder soilMoisture(double min, double max) { return range(SensorType.SOIL_MOISTURE, new Range(min, max)); }
 
-        public Builder light(double min, double max) { return range(SensorType.LIGHT, new Range(min, max)); }
-
         /**
          * @throws IllegalArgumentException if a finite bound of {@code range} lies outside what the
          *                                  sensor can measure (e.g. a negative humidity percentage)

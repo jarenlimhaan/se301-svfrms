@@ -7,8 +7,18 @@ import java.util.concurrent.ConcurrentMap;
 public final class ChamberRegistry implements ChamberStates {
     private final ConcurrentMap<String, ChamberState> chambers = new ConcurrentHashMap<>();
 
-    @Override
+    /** The chamber's live state (atomic get-or-create). */
     public ChamberState state(String chamber) {
         return chambers.computeIfAbsent(chamber, c -> new ChamberState());
+    }
+
+    @Override
+    public void record(String chamber, SensorType sensor, double value) {
+        state(chamber).set(sensor, value);
+    }
+
+    @Override
+    public ChamberControl control(String chamber) {
+        return state(chamber);
     }
 }

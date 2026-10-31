@@ -12,10 +12,6 @@ public final class ResourceMeter implements UsageRecorder, UsageTotals {
         (usage.resource() == Resource.WATER ? water : energy).addAndGet(usage.amount());
     }
 
-    public void addWater(int litres) { record(new Usage(Resource.WATER, litres)); }
-
-    public void addEnergy(int kwh) { record(new Usage(Resource.ENERGY, kwh)); }
-
     @Override
     public int water() { return water.get(); }
 

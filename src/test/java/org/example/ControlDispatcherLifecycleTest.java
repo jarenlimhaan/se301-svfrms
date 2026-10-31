@@ -47,7 +47,7 @@ class ControlDispatcherLifecycleTest {
     void workerInterruptedWithFullQueueDoesNotHangCloseAndIsReported() {
         assertTimeoutPreemptively(LIMIT, () -> {
             CountDownLatch entered = new CountDownLatch(1), release = new CountDownLatch(1);
-            ControlDispatcher dispatcher = new ControlDispatcher(chambers, 2, List.of());
+            ControlDispatcher dispatcher = new ControlDispatcher(chambers, 2, List.of(), Duration.ofSeconds(30));
             dispatcher.start();
             dispatcher.request("CH1", blocking(entered, release, true));
             entered.await();
@@ -66,7 +66,7 @@ class ControlDispatcherLifecycleTest {
     void producerBlockedOnFullQueueIsReleasedWhenWorkerDies() {
         assertTimeoutPreemptively(LIMIT, () -> {
             CountDownLatch entered = new CountDownLatch(1), release = new CountDownLatch(1);
-            ControlDispatcher dispatcher = new ControlDispatcher(chambers, 1, List.of());
+            ControlDispatcher dispatcher = new ControlDispatcher(chambers, 1, List.of(), Duration.ofSeconds(30));
             dispatcher.start();
             dispatcher.request("CH1", blocking(entered, release, true));
             entered.await();
@@ -97,7 +97,7 @@ class ControlDispatcherLifecycleTest {
                 @Override public String activate(ChamberControl chamber) { throw new IllegalStateException("boom"); }
             };
             ChamberSummaryTracker tracker = new ChamberSummaryTracker();
-            ControlDispatcher dispatcher = new ControlDispatcher(chambers, 2, List.of(tracker));
+            ControlDispatcher dispatcher = new ControlDispatcher(chambers, 2, List.of(tracker), Duration.ofSeconds(30));
             dispatcher.start();
             dispatcher.request("CH1", broken);
             for (int i = 0; i < 5; i++) dispatcher.request("CH1", Devices.GROW_LIGHT);
@@ -110,7 +110,7 @@ class ControlDispatcherLifecycleTest {
 
     @Test
     void requestsAreRejectedBeforeStartAndAfterClose() throws Exception {
-        ControlDispatcher dispatcher = new ControlDispatcher(chambers, 2, List.of());
+        ControlDispatcher dispatcher = new ControlDispatcher(chambers, 2, List.of(), Duration.ofSeconds(30));
         assertThrows(IllegalStateException.class, () -> dispatcher.request("CH1", Devices.GROW_LIGHT));
         dispatcher.start();
         dispatcher.close();
@@ -129,6 +129,35 @@ class ControlDispatcherLifecycleTest {
 
             IllegalStateException e = assertThrows(IllegalStateException.class, dispatcher::close);
             assertTrue(e.getMessage().contains("did not finish"), e.getMessage());
+        });
+    }
+
+    @Test
+    void closeBeforeStartRejectsLaterRequests() {
+        assertTimeoutPreemptively(LIMIT, () -> {
+            ControlDispatcher dispatcher = new ControlDispatcher(chambers, 1, List.of(), Duration.ofSeconds(30));
+            dispatcher.close();
+            for (int i = 0; i < 3; i++) { // more than the capacity: none may block
+                assertThrows(IllegalStateException.class, () -> dispatcher.request("CH1", Devices.GROW_LIGHT));
+            }
+        });
+    }
+
+    @Test
+    void secondCloseWaitsForTheDrain() {
+        assertTimeoutPreemptively(LIMIT, () -> {
+            CountDownLatch entered = new CountDownLatch(1), release = new CountDownLatch(1);
+            ChamberSummaryTracker tracker = new ChamberSummaryTracker();
+            ControlDispatcher dispatcher = new ControlDispatcher(chambers, 2, List.of(tracker), Duration.ofSeconds(30));
+            dispatcher.start();
+            dispatcher.request("CH1", blocking(entered, release, false));
+            entered.await();
+            CompletableFuture<Void> first = CompletableFuture.runAsync(dispatcher::close);
+            CompletableFuture.delayedExecutor(300, TimeUnit.MILLISECONDS).execute(release::countDown);
+            Thread.sleep(100); // let the first close start draining
+            dispatcher.close(); // must not return before the worker has drained
+            assertEquals(1, dispatcher.stats().executed());
+            first.get();
         });
     }
 

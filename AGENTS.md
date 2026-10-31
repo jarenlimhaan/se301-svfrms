@@ -24,11 +24,12 @@ The full brief is `SE301-Project-Specification.pdf`. Its key points:
 |---|---|
 | `src/main/java/org/example/` | Refactored code. `SVFRMS.run` (+ `CommandLine`) is the composition root and the only place that wires concrete classes. |
 | `.../crop` | `CropProfile` (Builder), `Range`, `CropRegistry`, `CropCatalog` (to add a crop, add one entry here), `CropSpecParser` (crops from the command line) |
-| `.../sensor` | `SensorType` (every per-sensor loop iterates it), `ChamberState` (versioned readings, atomic `adjustChecked`), `ChamberRegistry`, `SensorLog` |
+| `.../sensor` | `SensorType` (every per-sensor loop iterates it), `ChamberState` (atomic `adjust`), `ChamberRegistry` (`ChamberStates` roles: `record`, `control`) |
 | `.../monitoring` | `SensorProcessor` (the single breach rule, Sensor Failure), `ResponsePolicy` (must cover every sensor and direction; severities) |
 | `.../device` | `ControlDispatcher` (worker lifecycle), `ClosableBoundedQueue` (Lock/Condition, close/abort), `RequestExecutor`, `DeviceRequest` (Command), `Devices` |
 | `.../alert`, `.../report`, `.../resource`, `.../simulation`, `.../support` | Alerts (Observer, severity), reports (Facade, Strategy), water/energy meter, chamber tasks (`ReadingSource` strategy), `Listeners` (fault-isolated notification) |
-| `src/test/java/org/example/` | 69 JUnit tests in 15 classes: parity, every crop bound, validation, concurrency (`DispatcherConcurrencyTest`, `ClosableBoundedQueueTest`), shutdown, run-time crops, severity, exit codes, and `ArchitectureTest` (DIP check) |
+| `src/test/java/org/example/` | 68 JUnit tests in 14 classes: parity, every crop bound, validation, concurrency (`DispatcherConcurrencyTest`, `ClosableBoundedQueueTest`), shutdown, run-time crops, severity, exit codes, and `ArchitectureTest` (DIP check) |
+| `tools/compare_legacy.sh` | Parity check: runs legacy and `run.jar` N times, masks numbers, diffs distinct output lines, counts legacy crashes. |
 | `tools/build_readme_pdf.py` | Regenerates `README.pdf` (cover + content, Mermaid as vector) from `README.md`. Needs Python `markdown`, `playwright` and `mmdc`. |
 | `SE301-Project-Specification.pdf` | The assignment brief: requirements, deliverables and rubric. |
 | `legacy/SVFRMS.java` | The original code. **Read-only reference**: use it to check behaviour parity. |
@@ -73,8 +74,7 @@ Always run `mvn clean package` and confirm **all tests pass** before committing.
 - ✅ Review findings 1–9 fixed; strict rubric pass done (DIP/ISP role interfaces, LSP analysis, Lock/Condition queue, severity, Sensor Failure incl. unresponsive sensors, run-time crops, exit codes)
 - ✅ Verified against legacy: same output line formats over 25 runs each; 150-run defect comparison is in README §2.3
 - ✅ `README.md` rewritten and `README.pdf` regenerated (cover + 5 pages)
-- ✅ `mvn clean package` on JDK 25 (66/66 tests pass); `run.jar` rebuilt from it (Java 25 bytecode) (31 Oct)
-- ⬜ Re-run `mvn clean package` on JDK 25 after the 1 Nov review fixes (69 tests), then `cp target/run.jar run.jar`
+- ✅ `mvn clean package` on JDK 25 (68/68 tests pass); `run.jar` rebuilt from it (Java 25 bytecode) (31 Oct)
 - ⬜ **Presentation slides** for 2 Nov: 5 minutes plus a 2-minute demo covering legacy issues, SOLID and the refactor, a new-crop demo,
   the concurrency fixes, and evidence of maintainability and reliability
 - ⬜ Commit, then one member submits the zip on eLearn before the deadline
