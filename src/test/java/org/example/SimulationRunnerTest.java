@@ -25,7 +25,7 @@ class SimulationRunnerTest {
     private final ResourceMeter meter = new ResourceMeter();
 
     private SensorProcessor processor(org.example.device.DeviceController controller) {
-        return new SensorProcessor(CropCatalog.defaultRegistry(), new ChamberRegistry(), new AlertService(List.of()), meter, ResponsePolicy.standard(), controller);
+        return new SensorProcessor(CropCatalog.defaultRegistry(), new ChamberRegistry(), Chambers.alerts(List.of()), meter, ResponsePolicy.standard(), controller);
     }
 
     @Test

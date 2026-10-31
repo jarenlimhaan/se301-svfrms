@@ -26,7 +26,7 @@ import org.junit.jupiter.api.Test;
 /** Finding 1: every breach of a configured range gets a response unless the crop explicitly ignores it. */
 class ResponseCoverageTest {
     private final CropRegistry crops = CropCatalog.defaultRegistry();
-    private final AlertService alerts = new AlertService(List.of());
+    private final AlertService alerts = Chambers.alerts(List.of());
     private final List<String> requested = new ArrayList<>();
     private final SensorProcessor processor = new SensorProcessor(crops, new ChamberRegistry(), alerts, new ResourceMeter(), ResponsePolicy.standard(), (chamber, device) -> requested.add(device.name()));
 

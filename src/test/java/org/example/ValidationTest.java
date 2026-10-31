@@ -24,7 +24,7 @@ import org.junit.jupiter.api.Test;
 /** Finding 5: invalid configuration is rejected; invalid readings raise Sensor Failure alerts. */
 class ValidationTest {
     private final ChamberRegistry chambers = new ChamberRegistry();
-    private final AlertService alerts = new AlertService(List.of());
+    private final AlertService alerts = Chambers.alerts(List.of());
     private final ResourceMeter meter = new ResourceMeter();
     private final List<String> requested = new ArrayList<>();
     private final SensorProcessor processor = new SensorProcessor(CropCatalog.defaultRegistry(), chambers, alerts, meter, ResponsePolicy.standard(), (chamber, device) -> requested.add(device.name()));

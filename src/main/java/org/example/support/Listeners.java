@@ -12,10 +12,12 @@ public final class Listeners<L> {
     private final String channel;
     private final List<L> listeners;
     private final AtomicInteger failures = new AtomicInteger();
+    private final Consumer<String> errors;
 
-    public Listeners(String channel, List<L> listeners) {
+    public Listeners(String channel, List<L> listeners, Consumer<String> errors) {
         this.channel = channel;
         this.listeners = List.copyOf(listeners);
+        this.errors = errors;
     }
 
     /** Calls {@code event} on every listener; {@code source} (e.g. the chamber) is used in failure logs. */
@@ -25,7 +27,7 @@ public final class Listeners<L> {
                 event.accept(listener);
             } catch (RuntimeException e) {
                 failures.incrementAndGet();
-                System.err.println("[" + source + "][" + channel + "] listener "
+                errors.accept("[" + source + "][" + channel + "] listener "
                         + listener.getClass().getSimpleName() + " failed: " + e);
             }
         }

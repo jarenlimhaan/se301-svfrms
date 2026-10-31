@@ -10,6 +10,7 @@ import org.example.alert.AlertService;
 import org.example.device.ControlDispatcher;
 import org.example.monitoring.ResponsePolicy;
 import org.example.monitoring.SensorProcessor;
+import org.example.report.FacilitySnapshotFactory;
 import org.example.report.ReportService;
 import org.example.simulation.ChamberSimulation;
 import org.junit.jupiter.api.Test;
@@ -26,7 +27,8 @@ class ArchitectureTest {
     @Test
     void servicesDependOnAbstractionsOnly() throws ClassNotFoundException {
         for (Class<?> service : List.of(SensorProcessor.class, ReportService.class, ChamberSimulation.class,
-                ControlDispatcher.class, AlertService.class, Class.forName("org.example.device.RequestExecutor"))) {
+                FacilitySnapshotFactory.class, ControlDispatcher.class, AlertService.class,
+                Class.forName("org.example.device.RequestExecutor"))) {
             for (Constructor<?> constructor : service.getDeclaredConstructors()) {
                 for (Class<?> parameter : constructor.getParameterTypes()) {
                     assertTrue(parameter.isInterface() || VALUES.contains(parameter),

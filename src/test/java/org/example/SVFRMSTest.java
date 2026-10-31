@@ -30,7 +30,7 @@ import org.junit.jupiter.api.Test;
 class SVFRMSTest {
     private final CropRegistry crops = CropCatalog.defaultRegistry();
     private final ResourceMeter meter = new ResourceMeter();
-    private final AlertService alerts = new AlertService(List.of());
+    private final AlertService alerts = Chambers.alerts(List.of());
     private final List<String> requested = Collections.synchronizedList(new ArrayList<>());
     private final SensorProcessor processor = new SensorProcessor(crops, new ChamberRegistry(), alerts, meter, ResponsePolicy.standard(), (chamber, device) -> requested.add(chamber + "|" + device.name()));
 
@@ -94,7 +94,7 @@ class SVFRMSTest {
     void dispatcherDrainsEveryRequestBeforeClosing() throws Exception {
         ChamberSummaryTracker tracker = new ChamberSummaryTracker();
         ChamberRegistry chambers = new ChamberRegistry();
-        try (ControlDispatcher dispatcher = new ControlDispatcher(chambers, 2, List.of(tracker), Duration.ofSeconds(30))) {
+        try (ControlDispatcher dispatcher = Chambers.dispatcher(chambers, 2, List.of(tracker), Duration.ofSeconds(30))) {
             dispatcher.start();
             for (int i = 0; i < 100; i++) dispatcher.request("CH1", Devices.GROW_LIGHT);
         }

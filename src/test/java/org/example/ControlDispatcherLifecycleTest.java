@@ -48,7 +48,7 @@ class ControlDispatcherLifecycleTest {
     void workerInterruptedWithFullQueueDoesNotHangCloseAndIsReported() {
         assertTimeoutPreemptively(LIMIT, () -> {
             CountDownLatch entered = new CountDownLatch(1), release = new CountDownLatch(1);
-            ControlDispatcher dispatcher = new ControlDispatcher(chambers, 2, List.of(), Duration.ofSeconds(30));
+            ControlDispatcher dispatcher = Chambers.dispatcher(chambers, 2, List.of(), Duration.ofSeconds(30));
             dispatcher.start();
             dispatcher.request("CH1", blocking(entered, release, true));
             entered.await();
@@ -67,7 +67,7 @@ class ControlDispatcherLifecycleTest {
     void producerBlockedOnFullQueueIsReleasedWhenWorkerDies() {
         assertTimeoutPreemptively(LIMIT, () -> {
             CountDownLatch entered = new CountDownLatch(1), release = new CountDownLatch(1);
-            ControlDispatcher dispatcher = new ControlDispatcher(chambers, 1, List.of(), Duration.ofSeconds(30));
+            ControlDispatcher dispatcher = Chambers.dispatcher(chambers, 1, List.of(), Duration.ofSeconds(30));
             dispatcher.start();
             dispatcher.request("CH1", blocking(entered, release, true));
             entered.await();
@@ -98,7 +98,7 @@ class ControlDispatcherLifecycleTest {
                 @Override public String activate(ChamberControl chamber) { throw new IllegalStateException("boom"); }
             };
             ChamberSummaryTracker tracker = new ChamberSummaryTracker();
-            ControlDispatcher dispatcher = new ControlDispatcher(chambers, 2, List.of(tracker), Duration.ofSeconds(30));
+            ControlDispatcher dispatcher = Chambers.dispatcher(chambers, 2, List.of(tracker), Duration.ofSeconds(30));
             dispatcher.start();
             dispatcher.request("CH1", broken);
             for (int i = 0; i < 5; i++) dispatcher.request("CH1", Devices.GROW_LIGHT);
@@ -111,7 +111,7 @@ class ControlDispatcherLifecycleTest {
 
     @Test
     void requestsAreRejectedBeforeStartAndAfterClose() throws Exception {
-        ControlDispatcher dispatcher = new ControlDispatcher(chambers, 2, List.of(), Duration.ofSeconds(30));
+        ControlDispatcher dispatcher = Chambers.dispatcher(chambers, 2, List.of(), Duration.ofSeconds(30));
         assertThrows(IllegalStateException.class, () -> dispatcher.request("CH1", Devices.GROW_LIGHT));
         dispatcher.start();
         dispatcher.close();
@@ -123,7 +123,7 @@ class ControlDispatcherLifecycleTest {
     void closeIsBoundedWhenADeviceHangs() {
         assertTimeoutPreemptively(LIMIT, () -> {
             CountDownLatch entered = new CountDownLatch(1), never = new CountDownLatch(1);
-            ControlDispatcher dispatcher = new ControlDispatcher(chambers, 2, List.of(), Duration.ofMillis(300));
+            ControlDispatcher dispatcher = Chambers.dispatcher(chambers, 2, List.of(), Duration.ofMillis(300));
             dispatcher.start();
             dispatcher.request("CH1", blocking(entered, never, false));
             entered.await();
@@ -152,7 +152,7 @@ class ControlDispatcherLifecycleTest {
                     return "done";
                 }
             };
-            ControlDispatcher dispatcher = new ControlDispatcher(chambers, 1, List.of(), Duration.ofMillis(50));
+            ControlDispatcher dispatcher = Chambers.dispatcher(chambers, 1, List.of(), Duration.ofMillis(50));
             dispatcher.start();
             dispatcher.request("CH1", stubborn);
             entered.await();
@@ -169,11 +169,49 @@ class ControlDispatcherLifecycleTest {
     }
 
     @Test
+    void stuckDeviceCannotLeaveProducersBlockedForever() {
+        assertTimeoutPreemptively(LIMIT, () -> {
+            CountDownLatch entered = new CountDownLatch(1);
+            AtomicBoolean release = new AtomicBoolean();
+            Device stubborn = new Device() {
+                @Override public String name() { return "Stubborn"; }
+
+                @Override public String activate(ChamberControl chamber) {
+                    entered.countDown();
+                    while (!release.get()) {
+                        LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1));
+                        Thread.interrupted();
+                    }
+                    return "done";
+                }
+            };
+            ControlDispatcher dispatcher = Chambers.dispatcher(chambers, 1, List.of(), Duration.ofMillis(100));
+            dispatcher.start();
+            dispatcher.request("CH1", stubborn);
+            entered.await();
+            dispatcher.request("CH1", Devices.GROW_LIGHT); // fills the queue while the worker is stuck
+            CompletableFuture<Void> producer = CompletableFuture.runAsync(() -> {
+                try {
+                    dispatcher.request("CH1", Devices.GROW_LIGHT);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            });
+            try {
+                ExecutionException failure = assertThrows(ExecutionException.class, producer::get);
+                assertTrue(failure.getCause() instanceof IllegalStateException, String.valueOf(failure.getCause()));
+                assertThrows(IllegalStateException.class, dispatcher::close);
+            } finally {
+                release.set(true);
+            }
+        });
+    }
+
+    @Test
     void listenerErrorDoesNotCountAnExecutedRequestAsLost() {
         assertTimeoutPreemptively(LIMIT, () -> {
-            ControlDispatcher dispatcher = new ControlDispatcher(chambers, 1,
-                    List.of((chamber, device, effect) -> { throw new AssertionError("boom"); }),
-                    Duration.ofSeconds(30));
+            ControlDispatcher dispatcher = Chambers.dispatcher(chambers, 1,
+                    List.of((chamber, device, effect) -> { throw new AssertionError("boom"); }), Duration.ofSeconds(30));
             dispatcher.start();
             dispatcher.request("CH1", Devices.GROW_LIGHT);
 
@@ -187,7 +225,7 @@ class ControlDispatcherLifecycleTest {
     @Test
     void closeBeforeStartRejectsLaterRequests() {
         assertTimeoutPreemptively(LIMIT, () -> {
-            ControlDispatcher dispatcher = new ControlDispatcher(chambers, 1, List.of(), Duration.ofSeconds(30));
+            ControlDispatcher dispatcher = Chambers.dispatcher(chambers, 1, List.of(), Duration.ofSeconds(30));
             dispatcher.close();
             for (int i = 0; i < 3; i++) { // more than the capacity: none may block
                 assertThrows(IllegalStateException.class, () -> dispatcher.request("CH1", Devices.GROW_LIGHT));
@@ -200,7 +238,7 @@ class ControlDispatcherLifecycleTest {
         assertTimeoutPreemptively(LIMIT, () -> {
             CountDownLatch entered = new CountDownLatch(1), release = new CountDownLatch(1);
             ChamberSummaryTracker tracker = new ChamberSummaryTracker();
-            ControlDispatcher dispatcher = new ControlDispatcher(chambers, 2, List.of(tracker), Duration.ofSeconds(30));
+            ControlDispatcher dispatcher = Chambers.dispatcher(chambers, 2, List.of(tracker), Duration.ofSeconds(30));
             dispatcher.start();
             dispatcher.request("CH1", blocking(entered, release, false));
             entered.await();
@@ -216,9 +254,9 @@ class ControlDispatcherLifecycleTest {
     @Test
     void zeroOrNegativeShutdownTimeoutIsRejected() {
         assertThrows(IllegalArgumentException.class,
-                () -> new ControlDispatcher(chambers, 2, List.of(), Duration.ZERO));
+                () -> Chambers.dispatcher(chambers, 2, List.of(), Duration.ZERO));
         assertThrows(IllegalArgumentException.class,
-                () -> new ControlDispatcher(chambers, 2, List.of(), Duration.ofMillis(-1)));
+                () -> Chambers.dispatcher(chambers, 2, List.of(), Duration.ofMillis(-1)));
     }
 
     /** A timeout below 1 ms must not become join(0), which would wait forever. */
@@ -226,7 +264,7 @@ class ControlDispatcherLifecycleTest {
     void subMillisecondTimeoutStillBoundsClose() {
         assertTimeoutPreemptively(LIMIT, () -> {
             CountDownLatch entered = new CountDownLatch(1), never = new CountDownLatch(1);
-            ControlDispatcher dispatcher = new ControlDispatcher(chambers, 2, List.of(), Duration.ofNanos(500_000));
+            ControlDispatcher dispatcher = Chambers.dispatcher(chambers, 2, List.of(), Duration.ofNanos(500_000));
             dispatcher.start();
             dispatcher.request("CH1", blocking(entered, never, false));
             entered.await();

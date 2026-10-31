@@ -1,5 +1,6 @@
 package org.example.device;
 
+import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.List;
 import java.util.concurrent.locks.Condition;
@@ -28,14 +29,19 @@ final class ClosableBoundedQueue<T> {
     }
 
     /**
-     * Adds {@code item}, waiting while the queue is full.
+     * Adds {@code item}, waiting up to {@code timeout} while the queue is full.
      *
+     * @return false if the timeout expires before capacity becomes available
      * @throws IllegalStateException if the queue is closed or aborted, before or while waiting
      */
-    void put(T item) throws InterruptedException {
+    boolean put(T item, Duration timeout) throws InterruptedException {
         lock.lockInterruptibly();
         try {
-            while (items.size() == capacity && !closed) notFull.await();
+            long remaining = timeout.toNanos();
+            while (items.size() == capacity && !closed) {
+                if (remaining <= 0) return false;
+                remaining = notFull.awaitNanos(remaining);
+            }
             if (closed) {
                 throw abortCause == null
                         ? new IllegalStateException("queue closed; request rejected")
@@ -43,6 +49,7 @@ final class ClosableBoundedQueue<T> {
             }
             items.addLast(item);
             notEmpty.signal();
+            return true;
         } finally {
             lock.unlock();
         }
@@ -63,22 +70,19 @@ final class ClosableBoundedQueue<T> {
 
     /** Graceful close: rejects new items; the consumer still drains what is queued. */
     void close() {
-        lock.lock();
-        try {
-            closed = true;
-            notEmpty.signalAll();
-            notFull.signalAll();
-        } finally {
-            lock.unlock();
-        }
+        close(null);
     }
 
     /** The consumer has died: rejects new items and wakes blocked producers with {@code cause}. */
     void abort(Throwable cause) {
+        close(cause);
+    }
+
+    private void close(Throwable cause) {
         lock.lock();
         try {
             closed = true;
-            abortCause = cause;
+            if (cause != null) abortCause = cause;
             notEmpty.signalAll();
             notFull.signalAll();
         } finally {

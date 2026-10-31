@@ -23,6 +23,7 @@ import org.example.sensor.SensorType;
  * <p>Every collaborator is an interface (DIP); {@link ResponsePolicy} is an immutable value object.
  */
 public final class SensorProcessor implements ReadingProcessor {
+    private static final CropProfile DEFAULT_PROFILE = CropProfile.builder("Unknown").build();
     private final CropLookup crops;
     private final ReadingRecorder chambers;
     private final AlertSink alerts;
@@ -49,7 +50,7 @@ public final class SensorProcessor implements ReadingProcessor {
         chambers.record(chamber, sensor, value);
 
         // Unknown crops still get the facility-wide light and nutrient checks, as in the legacy system.
-        CropProfile profile = crops.find(crop).orElseGet(() -> CropProfile.builder(crop).build());
+        CropProfile profile = crops.find(crop).orElse(DEFAULT_PROFILE);
         Optional<Direction> direction = profile.range(sensor).flatMap(r -> r.breach(value));
         if (direction.isEmpty()) return;
 

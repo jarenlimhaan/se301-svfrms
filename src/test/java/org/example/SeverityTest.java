@@ -39,7 +39,7 @@ class SeverityTest {
 
     @Test
     void alertsCarryThePolicySeverity() throws Exception {
-        AlertService alerts = new AlertService(List.of());
+        AlertService alerts = Chambers.alerts(List.of());
         new SensorProcessor(CropCatalog.defaultRegistry(), new ChamberRegistry(), alerts, new ResourceMeter(),
                 ResponsePolicy.standard(), (c, d) -> {}).process("CH3", "Lettuce", SensorType.TEMPERATURE, 30);
         alerts.archiveActive();

@@ -32,7 +32,7 @@ class ListenerIsolationTest {
         ChamberSummaryTracker tracker = new ChamberSummaryTracker();
         List<String> printed = Collections.synchronizedList(new ArrayList<>());
         // The broken listener is first, so without isolation neither later listener would run.
-        AlertService alerts = new AlertService(List.of(BROKEN_ALERT_LISTENER, tracker, a -> printed.add(a.message())));
+        AlertService alerts = Chambers.alerts(List.of(BROKEN_ALERT_LISTENER, tracker, a -> printed.add(a.message())));
         SensorProcessor processor = new SensorProcessor(CropCatalog.defaultRegistry(), new ChamberRegistry(),
                 alerts, new ResourceMeter(), ResponsePolicy.standard(), (chamber, device) -> {});
 
@@ -48,7 +48,7 @@ class ListenerIsolationTest {
     @Test
     void alertsRaisedAfterAFailureAreStillDelivered() {
         List<String> seen = new ArrayList<>();
-        AlertService alerts = new AlertService(List.of(a -> { }, BROKEN_ALERT_LISTENER, a -> seen.add(a.message())));
+        AlertService alerts = Chambers.alerts(List.of(a -> { }, BROKEN_ALERT_LISTENER, a -> seen.add(a.message())));
         for (int i = 0; i < 3; i++) alerts.raise(new Alert("CH1", "Tomato", "a" + i, Severity.WARNING));
         assertEquals(List.of("a0", "a1", "a2"), seen);
         assertEquals(3, alerts.listenerFailures());
@@ -59,7 +59,7 @@ class ListenerIsolationTest {
         ChamberSummaryTracker tracker = new ChamberSummaryTracker();
         DeviceListener broken = (chamber, device, effect) -> { throw new IllegalStateException("display down"); };
         ChamberRegistry chambers = new ChamberRegistry();
-        ControlDispatcher dispatcher = new ControlDispatcher(chambers, 2, List.of(broken, tracker), Duration.ofSeconds(30));
+        ControlDispatcher dispatcher = Chambers.dispatcher(chambers, 2, List.of(broken, tracker), Duration.ofSeconds(30));
         dispatcher.start();
         for (int i = 0; i < 3; i++) dispatcher.request("CH1", Devices.GROW_LIGHT);
         dispatcher.close();

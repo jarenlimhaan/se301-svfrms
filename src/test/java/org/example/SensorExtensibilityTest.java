@@ -66,7 +66,7 @@ class SensorExtensibilityTest {
 
     @Test
     void unresponsiveSensorRaisesCriticalSensorFailure() throws Exception {
-        AlertService alerts = new AlertService(List.of());
+        AlertService alerts = Chambers.alerts(List.of());
         ChamberRegistry chambers = new ChamberRegistry();
         List<String> devices = new ArrayList<>();
         SensorProcessor processor = new SensorProcessor(CropCatalog.defaultRegistry(), chambers, alerts,

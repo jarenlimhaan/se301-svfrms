@@ -4,7 +4,12 @@ import org.example.sensor.SensorType;
 
 /** Accepts sensor readings from a chamber. The role a sensor feed (simulated or real) depends on. */
 public interface ReadingProcessor {
-    /** Handles one reading; may block while the device queue is full. */
+    /**
+     * Handles one reading; may block while the device queue is full.
+     *
+     * @throws InterruptedException if interrupted while waiting to enqueue a device request
+     * @throws IllegalStateException if the device worker fails or cannot accept the request in time
+     */
     void process(String chamber, String crop, SensorType sensor, double value) throws InterruptedException;
 
     /** Handles a sensor that gave no reading this cycle (unresponsive). */
