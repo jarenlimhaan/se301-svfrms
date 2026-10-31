@@ -48,6 +48,8 @@ public final class ControlDispatcher implements DeviceController, AutoCloseable 
             throw new IllegalArgumentException("shutdown timeout must be positive: " + shutdownTimeout);
         }
         this.shutdownTimeout = shutdownTimeout;
+        // A device that ignores interruption must not keep the command-line application alive forever.
+        worker.setDaemon(true);
     }
 
     public synchronized void start() {
@@ -63,7 +65,7 @@ public final class ControlDispatcher implements DeviceController, AutoCloseable 
      */
     @Override
     public void request(String chamber, Device device) throws InterruptedException {
-        if (state == State.NEW) throw new IllegalStateException("dispatcher not started; request rejected");
+        if (state != State.RUNNING) throw new IllegalStateException("dispatcher " + state + "; request rejected");
         queue.put(new DeviceRequest(chamber, device));
     }
 
@@ -127,7 +129,7 @@ public final class ControlDispatcher implements DeviceController, AutoCloseable 
             queue.close();
             awaitWorker(shutdownTimeout);
             if (worker.isAlive()) {
-                int dropped = queue.drain().size(); // nothing more may run after close() gives up
+                int dropped = queue.drain().size(); // queued work cannot start after close() gives up
                 worker.interrupt();
                 awaitWorker(INTERRUPT_GRACE);
                 throw new IllegalStateException("control worker did not finish within " + shutdownTimeout

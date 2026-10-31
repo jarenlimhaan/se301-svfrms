@@ -89,10 +89,10 @@ Dead code was removed (D7), including the sensor log that legacy wrote but never
 | C3, C5 | `AtomicInteger` counters in `ResourceMeter`; alert counters change under the same lock as the alert list; one summary per chamber (`computeIfAbsent`, C2), updated under its own lock. |
 | C4 | `ChamberState` is an `EnumMap` behind `synchronized` methods; every device change is one atomic `adjust` (read, add, clamp, write), so no effect is lost. Device code runs outside the lock (`deviceCodeRunsWithNoChamberLockHeld`). The ordering quirk of §2.2 is functionality, not a race, so it is kept. |
 | C6 | Archive, then daily report, sequentially, after all producers and the consumer have finished. |
-| C7 | `ClosableBoundedQueue` (one `ReentrantLock`, two `Condition`s) replaces `wait/notify`. If the worker dies, `abort` wakes every blocked producer at once with an error: no hang and no polling. Shutdown takes effect when the queue closes (admission is decided under the queue's lock): a request admitted before then runs, one after is rejected, also when `close()` comes before `start()`. `close()` lets the worker drain the queue, waits 30 s before interrupting it, allows a further 500 ms grace, and reports any request not executed; a concurrent or later `close()` waits for the same outcome and reports the same failure. If the timeout expires, queued requests are dropped (and counted) before the worker is interrupted; a request already running is asked to stop but can still finish if its device ignores interruption. Devices that throw are logged and counted; the worker carries on; a request killed by a device `Error` is counted as not executed, while a listener `Error` cannot make an executed request count as lost. Chamber tasks are `Callable`s and `SimulationRunner` checks every `Future`, so a failed chamber fails the run (exit 1); an interrupted runner cancels its chambers instead of waiting for them. |
+| C7 | `ClosableBoundedQueue` (one `ReentrantLock`, two `Condition`s) replaces `wait/notify`. If the worker dies, `abort` wakes every blocked producer at once with an error: no hang and no polling. Requests are accepted only in `RUNNING`; admission and queue closure are decided safely even when `close()` races a producer or comes before `start()`. `close()` lets the worker drain the queue, waits 30 s before interrupting it, allows a further 500 ms grace, and reports any request not executed; a concurrent or later `close()` waits for the same outcome and reports the same failure. If the timeout expires, queued requests are dropped (and counted) before the worker is interrupted; a request already running is asked to stop but can still finish if its device ignores interruption. The worker is a daemon, so such device code cannot keep the command-line application alive. Devices that throw are logged and counted; the worker carries on; a request killed by a device `Error` is counted as not executed, while a listener `Error` cannot make an executed request count as lost. Chamber tasks are `Callable`s and `SimulationRunner` checks every `Future`, so a failed chamber fails the run (exit 1); an interrupted runner cancels its chambers instead of waiting for them. |
 | C8 | **No nested locks anywhere**, by construction: each component guards its own state with one lock, and listeners and device code run outside every lock. Reports read an immutable `FacilitySnapshot`, built after every thread has finished. |
 
-Tests: `countersSurviveConcurrentUpdates` (8 threads × 5 000 updates, exact totals), `closeDuringHeavyProductionLosesNothing` (close races 8 producers; every request runs or is rejected), `deviceCodeRunsWithNoChamberLockHeld`, worker death with a full queue, a hanging device, close before start, two concurrent closes, an interrupted runner, a sub-millisecond shutdown timeout, and a failed run ending in exit 1 with no report.
+Tests: `countersSurviveConcurrentUpdates` (8 threads × 5 000 updates, exact totals), `closeDuringHeavyProductionLosesNothing` (close races 8 producers; every request runs or is rejected), `deviceCodeRunsWithNoChamberLockHeld`, worker death with a full queue, a hanging or interrupt-ignoring device, close before start, two concurrent closes, an interrupted runner, a sub-millisecond shutdown timeout, and a failed run ending in exit 1 with no report.
 
 ### 3.3 Behaviour preservation
 
@@ -242,7 +242,7 @@ classDiagram
 | New alert channel or severity routing | A new `AlertListener` registered in `SVFRMS.run`; a faulty one cannot disturb the others. |
 | Real sensors | A new `ReadingSource`; an unresponsive sensor already raises a Sensor Failure alert. |
 
-Every change is additive and local. Constructor injection lets each component be tested alone: 70 tests in 15 classes cover behaviour parity, every crop bound, validation, concurrency, shutdown, run-time crops and exit codes.
+Every change is additive and local. Constructor injection lets each component be tested alone: 71 tests in 15 classes cover behaviour parity, every crop bound, validation, concurrency, shutdown, run-time crops and exit codes.
 
 ## 6. Design Patterns
 
@@ -260,4 +260,4 @@ Supporting idioms: **Static factory methods** (`CropCatalog.defaultRegistry()`, 
 
 ## 7. Build and Run
 
-`mvn clean package` builds `target/run.jar` and runs the 70 tests. `java -jar run.jar` runs the legacy four chambers; `java -jar run.jar --help` lists the options.
+`mvn clean package` builds `target/run.jar` and runs the 71 tests. `java -jar run.jar` runs the legacy four chambers; `java -jar run.jar --help` lists the options.

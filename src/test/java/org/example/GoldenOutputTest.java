@@ -7,6 +7,7 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.OptionalDouble;
@@ -55,8 +56,8 @@ class GoldenOutputTest {
         assertEquals(new TreeSet<>(CONSOLE), console);
 
         List<String> archive = Files.readAllLines(report, StandardCharsets.UTF_8).stream()
-                .map(l -> l.startsWith("Timestamp: ") ? "Timestamp: T" : l).distinct().toList();
-        assertEquals(ARCHIVE, archive);
+                .map(l -> l.startsWith("Timestamp: ") ? "Timestamp: T" : l).toList();
+        assertEquals(expectedArchive(), archive);
     }
 
     private static final List<String> CONSOLE = List.of(
@@ -83,23 +84,28 @@ class GoldenOutputTest {
             "Energy Usage: 220 kWh",
             "System finished sensor processing.",
             "Archive report saved to: PATH");
-    private static final List<String> ARCHIVE = List.of(
-            "===== DAILY REPORT =====",
-            "Timestamp: T",
-            "Generated Alerts: 100",
-            "Active Alerts: 0",
-            "Water Usage: 1440 L",
-            "Energy Usage: 220 kWh",
-            "Archived alerts: 100",
-            "---",
-            "Archived 100 alerts",
-            "Daily Report",
-            "--- chamber wise summary ---",
-            "CH1 -> Alerts=100, Actions=100, Last Action=Nutrient Injector Activated, Last Alert=CH1 Low Nutrient Level",
-            "--- archived alerts ---",
-            "CH1 Tomato High Temp",
-            "CH1 Tomato Low Humidity",
-            "CH1 Tomato Low Soil Moisture",
-            "CH1 Low Light Level",
-            "CH1 Low Nutrient Level");
+    private static List<String> expectedArchive() {
+        List<String> lines = new ArrayList<>(List.of(
+                "===== DAILY REPORT =====",
+                "Timestamp: T",
+                "Generated Alerts: 100",
+                "Active Alerts: 0",
+                "Water Usage: 1440 L",
+                "Energy Usage: 220 kWh",
+                "Archived alerts: 100",
+                "---",
+                "Archived 100 alerts",
+                "Daily Report",
+                "--- chamber wise summary ---",
+                "CH1 -> Alerts=100, Actions=100, Last Action=Nutrient Injector Activated, Last Alert=CH1 Low Nutrient Level",
+                "--- archived alerts ---"));
+        for (int cycle = 0; cycle < 20; cycle++) {
+            lines.add("CH1 Tomato High Temp");
+            lines.add("CH1 Tomato Low Humidity");
+            lines.add("CH1 Tomato Low Soil Moisture");
+            lines.add("CH1 Low Light Level");
+            lines.add("CH1 Low Nutrient Level");
+        }
+        return lines;
+    }
 }

@@ -5,9 +5,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 /**
- * An immutable set of independent listeners. Each is notified in turn; one that throws is logged
- * to stderr and counted, and the rest are still notified, so a faulty listener can never stop
- * the thread that published the event or starve the other listeners.
+ * An immutable set of independent listeners. Each is notified in turn; a listener runtime failure
+ * is logged and counted, and the rest are still notified. JVM-level {@link Error}s are not swallowed.
  */
 public final class Listeners<L> {
     private final String channel;

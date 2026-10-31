@@ -11,6 +11,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.LockSupport;
 import org.example.device.ControlDispatcher;
 import org.example.device.Device;
 import org.example.device.Devices;
@@ -130,6 +132,39 @@ class ControlDispatcherLifecycleTest {
             assertTrue(e.getMessage().contains("did not finish"), e.getMessage());
             IllegalStateException repeated = assertThrows(IllegalStateException.class, dispatcher::close);
             assertEquals(e.getMessage(), repeated.getMessage());
+        });
+    }
+
+    @Test
+    void interruptIgnoringDeviceCannotKeepTheApplicationAlive() {
+        assertTimeoutPreemptively(LIMIT, () -> {
+            CountDownLatch entered = new CountDownLatch(1);
+            AtomicBoolean release = new AtomicBoolean();
+            Device stubborn = new Device() {
+                @Override public String name() { return "Stubborn"; }
+
+                @Override public String activate(ChamberControl chamber) {
+                    entered.countDown();
+                    while (!release.get()) {
+                        LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1));
+                        Thread.interrupted(); // deliberately ignore and clear interruption
+                    }
+                    return "done";
+                }
+            };
+            ControlDispatcher dispatcher = new ControlDispatcher(chambers, 1, List.of(), Duration.ofMillis(50));
+            dispatcher.start();
+            dispatcher.request("CH1", stubborn);
+            entered.await();
+            try {
+                assertThrows(IllegalStateException.class, dispatcher::close);
+                Thread worker = Thread.getAllStackTraces().keySet().stream()
+                        .filter(t -> t.isAlive() && t.getName().equals("control-dispatcher"))
+                        .findFirst().orElseThrow();
+                assertTrue(worker.isDaemon(), "a stuck device worker must not hold the JVM open");
+            } finally {
+                release.set(true);
+            }
         });
     }
 

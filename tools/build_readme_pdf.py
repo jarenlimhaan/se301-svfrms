@@ -3,25 +3,29 @@
 Usage:  python tools/build_readme_pdf.py README.md README.pdf
 Needs:  pip install markdown playwright && playwright install chromium; npm install -g @mermaid-js/mermaid-cli
 """
-import base64, pathlib, re, subprocess, sys, tempfile
+import base64, pathlib, re, shutil, subprocess, sys, tempfile
 import markdown
 from playwright.sync_api import sync_playwright
 
 src, out = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+mermaid_cli = shutil.which("mmdc.cmd") or shutil.which("mmdc")
+if mermaid_cli is None:
+    raise RuntimeError("mmdc not found; install @mermaid-js/mermaid-cli")
 md = src.read_text(encoding="utf-8")
 md = re.sub(r"^# .*\n", "", md, count=1)  # title lives on the cover
 
 work = pathlib.Path(tempfile.mkdtemp())
 cfg = work / "mermaid.json"
 cfg.write_text('{"theme":"neutral","fontFamily":"Carlito, Calibri, sans-serif","flowchart":{"htmlLabels":true,"curve":"basis"},'
-               '"sequence":{"useMaxWidth":true},"class":{"hideEmptyMembersBox":true},"themeVariables":{"fontSize":"16px"}}')
+               '"sequence":{"useMaxWidth":true},"class":{"hideEmptyMembersBox":true},"themeVariables":{"fontSize":"16px"}}',
+               encoding="utf-8")
 diagrams = []
 def render(m):
     i = len(diagrams)
-    (work / f"d{i}.mmd").write_text(m.group(1))
-    subprocess.run(["mmdc", "-i", str(work / f"d{i}.mmd"), "-o", str(work / f"d{i}.svg"), "-c", str(cfg), "-b", "white"],
+    (work / f"d{i}.mmd").write_text(m.group(1), encoding="utf-8")
+    subprocess.run([mermaid_cli, "-i", str(work / f"d{i}.mmd"), "-o", str(work / f"d{i}.svg"), "-c", str(cfg), "-b", "white"],
                    check=True, capture_output=True)
-    svg = (work / f"d{i}.svg").read_text()
+    svg = (work / f"d{i}.svg").read_text(encoding="utf-8")
     diagrams.append(svg)
     return f"\n\nDIAGRAM{i}PLACEHOLDER\n\n"
 md = re.sub(r"```mermaid\n(.*?)```", render, md, flags=re.S)
