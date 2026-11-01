@@ -43,7 +43,7 @@ class SVFRMSTest {
     void tomatoHighTempMatchesLegacyBehaviour() throws Exception {
         processor.process("CH1", "Tomato", SensorType.TEMPERATURE, 31);
         assertEquals(List.of("CH1 Tomato High Temp"), alertMessages());
-        assertEquals(10, meter.energy());
+        assertEquals(10, meter.totals().get(Resource.ENERGY).intValue());
         assertEquals(List.of("CH1|Cooling Fan"), requested);
     }
 
@@ -52,7 +52,7 @@ class SVFRMSTest {
         processor.process("CH1", "Tomato", SensorType.SOIL_MOISTURE, 70);
         processor.process("CH1", "Tomato", SensorType.SOIL_MOISTURE, 40);
         assertEquals(List.of("CH1 Tomato Low Soil Moisture"), alertMessages());
-        assertEquals(50, meter.water());
+        assertEquals(50, meter.totals().get(Resource.WATER).intValue());
     }
 
     @Test
@@ -87,7 +87,7 @@ class SVFRMSTest {
         }
         assertEquals(threads * perThread, alerts.generatedCount());
         assertEquals(threads * perThread, alerts.activeCount());
-        assertEquals(threads * perThread, meter.water());
+        assertEquals(threads * perThread, meter.totals().get(Resource.WATER).intValue());
     }
 
     @Test

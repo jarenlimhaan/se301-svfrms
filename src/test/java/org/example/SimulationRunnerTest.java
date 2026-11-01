@@ -17,6 +17,7 @@ import org.example.simulation.ChamberSimulation;
 import org.example.simulation.SimulationFailedException;
 import org.example.simulation.RandomReadingSource;
 import org.example.simulation.SimulationRunner;
+import org.example.resource.Resource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -35,7 +36,7 @@ class SimulationRunnerTest {
                 new ChamberSimulation("CH1", "Tomato", 20, p, RandomReadingSource.legacy(), meter),
                 new ChamberSimulation("CH2", "Kale", 20, p, RandomReadingSource.legacy(), meter)));
         // Base usage is 1 kWh per cycle; Tomato temperature breaches can only add to it.
-        assertTrue(meter.energy() >= 2 * 20, "every cycle of both chambers ran: " + meter.energy());
+        assertTrue(meter.totals().get(Resource.ENERGY).intValue() >= 2 * 20, "every cycle of both chambers ran: " + meter.totals().get(Resource.ENERGY).intValue());
     }
 
     @Test

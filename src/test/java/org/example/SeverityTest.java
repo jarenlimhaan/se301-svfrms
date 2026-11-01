@@ -88,4 +88,13 @@ class SeverityTest {
         }
         return buffer.toString(StandardCharsets.UTF_8);
     }
+
+    @Test
+    void alertFormatsAreATableLookup() {
+        assertEquals(java.util.Set.of("legacy", "severity"), org.example.alert.AlertFormats.names());
+        assertTrue(org.example.alert.AlertFormats.printer("severity") instanceof SeverityAlertPrinter);
+        assertTrue(org.example.alert.AlertFormats.printer("legacy") instanceof org.example.alert.ConsoleAlertPrinter);
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> org.example.alert.AlertFormats.printer("loud"));
+    }
 }

@@ -10,7 +10,7 @@ import org.example.support.Listeners;
  * lock so the list and counters always change together; listeners are notified outside the lock,
  * and a listener that throws is isolated (see {@link Listeners}).
  */
-public final class AlertService implements AlertSink, AlertLedger {
+public final class AlertService implements AlertSink, AlertArchive, AlertHistory {
     private final Listeners<AlertListener> listeners;
     private final List<Alert> active = new ArrayList<>();
     private final List<Alert> archived = new ArrayList<>();

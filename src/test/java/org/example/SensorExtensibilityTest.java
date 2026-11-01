@@ -23,6 +23,7 @@ import org.example.sensor.SensorType;
 import org.example.simulation.ChamberSimulation;
 import org.example.simulation.RandomReadingSource;
 import org.example.simulation.ReadingSource;
+import org.example.resource.Resource;
 import org.junit.jupiter.api.Test;
 
 /** Every "for each sensor" place is driven by {@link SensorType}, and unresponsive sensors are reported. */
@@ -49,8 +50,8 @@ class SensorExtensibilityTest {
         List<SensorType> expected = new ArrayList<>();
         for (int i = 0; i < 3; i++) expected.addAll(Arrays.asList(SensorType.values()));
         assertEquals(expected, seen);
-        assertEquals(6, meter.water());
-        assertEquals(3, meter.energy());
+        assertEquals(6, meter.totals().get(Resource.WATER).intValue());
+        assertEquals(3, meter.totals().get(Resource.ENERGY).intValue());
     }
 
     @Test

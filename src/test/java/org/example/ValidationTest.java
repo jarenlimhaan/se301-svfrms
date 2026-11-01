@@ -62,7 +62,7 @@ class ValidationTest {
                 org.example.sensor.Direction.HIGH, Resource.ENERGY, -10));
         assertThrows(IllegalArgumentException.class, () -> meter.record(new Usage(Resource.WATER, -2)));
         assertThrows(IllegalArgumentException.class, () -> meter.record(new Usage(Resource.ENERGY, -1)));
-        assertEquals(0, meter.water());
+        assertEquals(0, meter.totals().get(Resource.WATER).intValue());
     }
 
     @Test
@@ -89,7 +89,7 @@ class ValidationTest {
             assertEquals(sensor.initialValue(), Chambers.read(chambers.control("CH1"), sensor));
         }
         assertTrue(requested.isEmpty(), "an invalid reading never triggers a device");
-        assertEquals(0, meter.water() + meter.energy(), "and never costs resources");
+        assertEquals(0, meter.totals().get(Resource.WATER).intValue() + meter.totals().get(Resource.ENERGY).intValue(), "and never costs resources");
     }
 
     @Test

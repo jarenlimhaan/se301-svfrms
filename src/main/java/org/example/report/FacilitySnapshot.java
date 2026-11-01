@@ -22,17 +22,9 @@ public record FacilitySnapshot(Instant timestamp, int generatedAlerts, int activ
         archivedAlerts = List.copyOf(archivedAlerts);
     }
 
-    /** Compatibility constructor for the legacy report's water and energy totals. */
-    public FacilitySnapshot(Instant timestamp, int generatedAlerts, int activeAlerts, int waterUsage, int energyUsage,
-                            List<String> activity, List<String> chamberSummaries, List<String> archivedAlerts) {
-        this(timestamp, generatedAlerts, activeAlerts,
-                Map.of(Resource.WATER, waterUsage, Resource.ENERGY, energyUsage),
-                activity, chamberSummaries, archivedAlerts);
-    }
+    /** Total water used, in litres. */
+    public int waterUsage() { return resourceUsage.getOrDefault(Resource.WATER, 0); }
 
-    public int resourceUsage(Resource resource) { return resourceUsage.getOrDefault(resource, 0); }
-
-    public int waterUsage() { return resourceUsage(Resource.WATER); }
-
-    public int energyUsage() { return resourceUsage(Resource.ENERGY); }
+    /** Total energy used, in kWh. */
+    public int energyUsage() { return resourceUsage.getOrDefault(Resource.ENERGY, 0); }
 }
