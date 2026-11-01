@@ -30,10 +30,11 @@ record CommandLine(Map<String, String> chambers, List<CropProfile> addedCrops, L
               CHAMBER=Crop             assign a crop to a chamber, e.g. CH5=Kale (default: CH1..CH4 legacy crops)
               --add-crop=SPEC          add or replace a crop, e.g. --add-crop="Okra:temperature=24..30,soil=50..70"
               --remove-crop=Name       remove a crop from the catalog for this run
-              --alert-format=FORMAT    legacy (default: [CH1][Tomato][ALERT] ...) or severity (CRITICAL: ...)
+              --alert-format=FORMAT    console alert format, one of %s (default: %s)
               --help                   show this message
             SPEC is Name:sensor=min..max,... with sensors temperature, humidity, soil, light, nutrient.
-            Exit status: 0 success, 1 run failed, 2 archive report not saved, 3 invalid arguments.""";
+            Exit status: 0 success, 1 run failed, 2 archive report not saved, 3 invalid arguments."""
+            .formatted(AlertFormats.names(), AlertFormats.DEFAULT);
 
     CommandLine {
         chambers = Collections.unmodifiableMap(new LinkedHashMap<>(chambers.isEmpty() ? CropCatalog.legacyChambers() : chambers));
@@ -56,10 +57,7 @@ record CommandLine(Map<String, String> chambers, List<CropProfile> addedCrops, L
             } else if (arg.startsWith("--remove-crop=")) {
                 removed.add(value(arg));
             } else if (arg.startsWith("--alert-format=")) {
-                alertFormat = value(arg);
-                if (!AlertFormats.names().contains(alertFormat)) {
-                    throw new IllegalArgumentException("--alert-format must be one of " + AlertFormats.names() + ": " + arg);
-                }
+                alertFormat = AlertFormats.requireKnown(value(arg));
             } else if (arg.startsWith("--")) {
                 throw new IllegalArgumentException("Unknown option: " + arg);
             } else {

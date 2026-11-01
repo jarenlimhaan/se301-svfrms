@@ -6,8 +6,8 @@ import java.util.TreeSet;
 import java.util.function.Supplier;
 
 /**
- * The console alert formats, by name. Adding a format is one entry in this table; command-line
- * parsing and wiring look formats up here and never change.
+ * The console alert formats, by name. Adding a format is one entry in this table: name validation,
+ * the command-line usage text and wiring all read this table, so none of them change.
  */
 public final class AlertFormats {
     /** The format used when none is chosen: the legacy {@code [CH1][Tomato][ALERT] ...} lines. */
@@ -25,13 +25,23 @@ public final class AlertFormats {
     }
 
     /**
+     * Returns {@code name} if it is a known format; the only place format names are validated.
+     *
+     * @throws IllegalArgumentException if no such format exists
+     */
+    public static String requireKnown(String name) {
+        if (!FORMATS.containsKey(name)) {
+            throw new IllegalArgumentException("unknown alert format '" + name + "'; known: " + names());
+        }
+        return name;
+    }
+
+    /**
      * A new printer for the named format.
      *
      * @throws IllegalArgumentException if no such format exists
      */
     public static AlertListener printer(String name) {
-        Supplier<AlertListener> format = FORMATS.get(name);
-        if (format == null) throw new IllegalArgumentException("unknown alert format '" + name + "'; known: " + names());
-        return format.get();
+        return FORMATS.get(requireKnown(name)).get();
     }
 }

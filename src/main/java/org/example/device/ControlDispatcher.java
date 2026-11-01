@@ -30,7 +30,7 @@ public final class ControlDispatcher implements DeviceController, AutoCloseable 
     private volatile State state = State.NEW;
     /** Why the worker stopped before the queue was closed and drained, or {@code null}. */
     private volatile Throwable workerFailure;
-    /** 1 if a device Error killed the worker before its request completed. */
+    /** Whether a device Error killed the worker before its request completed. */
     private volatile boolean lostInFlightRequest;
     private final CountDownLatch closeFinished = new CountDownLatch(1);
     /** The first close outcome is retained so every later close reports the same failure. */
