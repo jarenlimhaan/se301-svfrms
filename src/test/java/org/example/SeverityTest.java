@@ -19,7 +19,6 @@ import org.example.resource.ResourceMeter;
 import org.example.sensor.Breach;
 import org.example.sensor.ChamberRegistry;
 import org.example.sensor.Direction;
-import org.example.sensor.SensorLog;
 import org.example.sensor.SensorType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -40,9 +39,9 @@ class SeverityTest {
 
     @Test
     void alertsCarryThePolicySeverity() throws Exception {
-        AlertService alerts = new AlertService(List.of());
-        new SensorProcessor(CropCatalog.defaultRegistry(), new ChamberRegistry(), new SensorLog(), alerts, new ResourceMeter(),
-                ResponsePolicy.standard(), (c, d, t) -> {}).process("CH3", "Lettuce", SensorType.TEMPERATURE, 30);
+        AlertService alerts = Chambers.alerts(List.of());
+        new SensorProcessor(CropCatalog.defaultRegistry(), new ChamberRegistry(), alerts, new ResourceMeter(),
+                ResponsePolicy.standard(), (c, d) -> {}).process("CH3", "Lettuce", SensorType.TEMPERATURE, 30);
         alerts.archiveActive();
         assertEquals(List.of(new Alert("CH3", "Lettuce", "CH3 Lettuce High Temp", Severity.CRITICAL)), alerts.archived());
     }

@@ -23,12 +23,13 @@ The full brief is `SE301-Project-Specification.pdf`. Its key points:
 | Path | What |
 |---|---|
 | `src/main/java/org/example/` | Refactored code. `SVFRMS.run` (+ `CommandLine`) is the composition root and the only place that wires concrete classes. |
-| `.../crop` | `CropProfile` (Builder), `Range`, `CropRegistry`, `CropCatalog` (to add a crop, add one entry here), `CropSpecParser` (crops from the command line) |
-| `.../sensor` | `SensorType` (every per-sensor loop iterates it), `ChamberState` (versioned readings, atomic `adjustChecked`), `ChamberRegistry`, `SensorLog` |
+| `.../crop` | `CropProfile` (Builder), `Range`, `CropRegistry`, `CropCatalog` (to add a crop, add one entry here), `CropSpecParser` (`--add-crop` specs) |
+| `.../sensor` | `SensorType` (every per-sensor loop iterates it), `ChamberState` (atomic `adjust`), `ChamberRegistry` (roles: `ReadingRecorder` for monitoring, `ChamberControls` for devices) |
 | `.../monitoring` | `SensorProcessor` (the single breach rule, Sensor Failure), `ResponsePolicy` (must cover every sensor and direction; severities) |
-| `.../device` | `ControlDispatcher` (worker lifecycle), `ClosableBoundedQueue` (Lock/Condition, close/abort), `RequestExecutor`, `DeviceRequest` (Command), `Devices` |
+| `.../device` | `ControlDispatcher` (worker lifecycle), `ClosableBoundedQueue` (Lock/Condition, close/abort), `RequestExecutor` (invoker), `DeviceRequest` (Command, `execute`), `Devices` |
 | `.../alert`, `.../report`, `.../resource`, `.../simulation`, `.../support` | Alerts (Observer, severity), reports (Facade, Strategy), water/energy meter, chamber tasks (`ReadingSource` strategy), `Listeners` (fault-isolated notification) |
-| `src/test/java/org/example/` | 66 JUnit tests in 15 classes: parity, every crop bound, validation, concurrency (`DispatcherConcurrencyTest`, `ClosableBoundedQueueTest`), shutdown, run-time crops, severity, exit codes, and `ArchitectureTest` (DIP check) |
+| `src/test/java/org/example/` | 69 JUnit tests in 15 classes: `GoldenOutputTest` (console and archive formats), parity, every crop bound, validation, concurrency (`DispatcherConcurrencyTest`, `ClosableBoundedQueueTest`), shutdown, run-time crops, severity, exit codes, and `ArchitectureTest` (DIP check) |
+| `tools/compare_legacy.sh` | Parity check: runs legacy and `run.jar` N times, masks numbers, diffs distinct output lines, counts legacy crashes. |
 | `tools/build_readme_pdf.py` | Regenerates `README.pdf` (cover + content, Mermaid as vector) from `README.md`. Needs Python `markdown`, `playwright` and `mmdc`. |
 | `SE301-Project-Specification.pdf` | The assignment brief: requirements, deliverables and rubric. |
 | `legacy/SVFRMS.java` | The original code. **Read-only reference**: use it to check behaviour parity. |
@@ -55,8 +56,9 @@ Always run `mvn clean package` and confirm **all tests pass** before committing.
 
 1. **Do not change behaviour.** If you touch `monitoring`, `device`, `crop` or `report`, compare
    the output with the legacy version: run both several times, replace numbers with `N`, and diff
-   the sets of distinct output lines. The only accepted difference is that the legacy version
-   crashes (`NullPointerException` from its HashMap race).
+   the sets of distinct output lines (`tools/compare_legacy.sh`; `GoldenOutputTest` pins the formats).
+   The default run must match exactly. The only accepted differences are the deliberate ones listed in
+   README §3.3 (no crashes, fixed report order, opt-in options, exit status and stderr detail on failures).
 2. **Keep it thread-safe.** Never hold one lock while acquiring another. Call listeners outside
    locks. Use `ConcurrentHashMap`, atomics, or the owning class's lock. Never swallow
    `InterruptedException`; restore the interrupt flag instead.
@@ -68,12 +70,13 @@ Always run `mvn clean package` and confirm **all tests pass** before committing.
 6. **Never commit** `target/`, `archive/`, `submission/` or zips.
 7. **Honor code.** Do not discuss or exchange solutions with other teams.
 
-## Status (31 Oct 2026)
+## Status (1 Nov 2026)
 
 - ✅ Review findings 1–9 fixed; strict rubric pass done (DIP/ISP role interfaces, LSP analysis, Lock/Condition queue, severity, Sensor Failure incl. unresponsive sensors, run-time crops, exit codes)
 - ✅ Verified against legacy: same output line formats over 25 runs each; 150-run defect comparison is in README §2.3
-- ✅ `README.md` rewritten and `README.pdf` regenerated (cover + 5 pages)
-- ✅ `mvn clean package` on JDK 25 (66/66 tests pass); `run.jar` rebuilt from it (Java 25 bytecode) (31 Oct)
+- ✅ `README.md` rewritten and `README.pdf` regenerated (cover + 6 pages)
+- ✅ `mvn clean package` on JDK 25 (69/69 tests pass); `run.jar` rebuilt from it (Java 25 bytecode) (1 Nov)
+- ✅ Three rounds of parallel rubric grading; findings fixed (PR #2)
 - ⬜ **Presentation slides** for 2 Nov: 5 minutes plus a 2-minute demo covering legacy issues, SOLID and the refactor, a new-crop demo,
   the concurrency fixes, and evidence of maintainability and reliability
 - ⬜ Commit, then one member submits the zip on eLearn before the deadline
@@ -83,8 +86,8 @@ Always run `mvn clean package` and confirm **all tests pass** before committing.
 Use forward-slash paths (PowerShell 5.1 `Compress-Archive` writes backslashes, which break on macOS and Linux):
 
 ```bash
-C:/Windows/System32/tar.exe -a -c -f SVFRMS-submission.zip src legacy run.jar README.pdf pom.xml   # Windows
-zip -r SVFRMS-submission.zip src legacy run.jar README.pdf pom.xml                                # macOS/Linux
+C:/Windows/System32/tar.exe -a -c -f SVFRMS-submission.zip src legacy tools run.jar README.pdf pom.xml   # Windows
+zip -r SVFRMS-submission.zip src legacy tools run.jar README.pdf pom.xml                                # macOS/Linux
 ```
 
-`legacy/` is included because README §2.3 cites `legacy/LegacyHangDemo.java`. Then unzip a fresh copy and run `java -jar run.jar` from it before uploading.
+`legacy/` and `tools/` are included because the README cites `legacy/LegacyHangDemo.java` and `tools/compare_legacy.sh`. Then unzip a fresh copy and run `java -jar run.jar` from it before uploading.

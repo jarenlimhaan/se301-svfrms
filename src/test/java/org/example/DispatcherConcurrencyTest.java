@@ -2,6 +2,7 @@ package org.example;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import java.time.Duration;
@@ -11,14 +12,19 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.example.device.ControlDispatcher;
 import org.example.device.Device;
 import org.example.device.Devices;
+import org.example.alert.Alert;
+import org.example.alert.Severity;
+import org.example.report.ChamberSummaryTracker;
 import org.example.sensor.ChamberControl;
 import org.example.sensor.ChamberRegistry;
 import org.example.sensor.ChamberState;
+import org.example.sensor.SensorType;
 import org.junit.jupiter.api.Test;
 
 /** Concurrency guarantees of the control dispatcher under contention. */
@@ -28,7 +34,7 @@ class DispatcherConcurrencyTest {
     @Test
     void deviceCodeRunsWithNoChamberLockHeld() throws Exception {
         ChamberRegistry chambers = new ChamberRegistry();
-        ChamberState state = chambers.state("CH1");
+        ChamberControl state = chambers.control("CH1"); // the chamber's ChamberState
         AtomicBoolean lockHeld = new AtomicBoolean(true);
         Device probe = new Device() {
             @Override public String name() { return "Probe"; }
@@ -38,7 +44,7 @@ class DispatcherConcurrencyTest {
                 return "probed";
             }
         };
-        ControlDispatcher dispatcher = new ControlDispatcher(chambers, 2, List.of());
+        ControlDispatcher dispatcher = Chambers.dispatcher(chambers, 2, List.of(), Duration.ofSeconds(30));
         dispatcher.start();
         dispatcher.request("CH1", probe);
         dispatcher.close();
@@ -52,7 +58,7 @@ class DispatcherConcurrencyTest {
         assertTimeoutPreemptively(LIMIT, () -> {
             for (int round = 0; round < 20; round++) {
                 ChamberRegistry chambers = new ChamberRegistry();
-                ControlDispatcher dispatcher = new ControlDispatcher(chambers, 3, List.of());
+                ControlDispatcher dispatcher = Chambers.dispatcher(chambers, 3, List.of(), Duration.ofSeconds(30));
                 dispatcher.start();
                 AtomicInteger accepted = new AtomicInteger(), rejected = new AtomicInteger();
                 CountDownLatch go = new CountDownLatch(1);
@@ -80,6 +86,73 @@ class DispatcherConcurrencyTest {
                 assertEquals(8 * 200, accepted.get() + rejected.get());
                 assertEquals(accepted.get(), dispatcher.stats().executed(), "every accepted request ran (round " + round + ")");
             }
+        });
+    }
+
+    @Test
+    void concurrentFirstAccessUsesOneChamberState() {
+        assertTimeoutPreemptively(LIMIT, () -> {
+            ChamberRegistry chambers = new ChamberRegistry();
+            var states = ConcurrentHashMap.<ChamberControl>newKeySet();
+            CountDownLatch go = new CountDownLatch(1);
+            try (ExecutorService pool = Executors.newFixedThreadPool(32)) {
+                List<Future<?>> tasks = new ArrayList<>();
+                for (int i = 0; i < 2_000; i++) {
+                    tasks.add(pool.submit(() -> {
+                        go.await();
+                        states.add(chambers.control("CH1"));
+                        return null;
+                    }));
+                }
+                go.countDown();
+                for (Future<?> task : tasks) task.get();
+            }
+            assertEquals(1, states.size(), "atomic get-or-create must publish one chamber state");
+        });
+    }
+
+    @Test
+    void concurrentDeviceAdjustmentsLoseNoUpdates() {
+        assertTimeoutPreemptively(LIMIT, () -> {
+            ChamberState state = new ChamberState();
+            int threads = 16, changes = 5_000;
+            CountDownLatch go = new CountDownLatch(1);
+            try (ExecutorService pool = Executors.newFixedThreadPool(threads)) {
+                for (int i = 0; i < threads; i++) {
+                    pool.submit(() -> {
+                        go.await();
+                        for (int j = 0; j < changes; j++) state.adjust(SensorType.LIGHT, 1, 200_000);
+                        return null;
+                    });
+                }
+                go.countDown();
+            }
+            assertEquals(600 + threads * changes, Chambers.read(state, SensorType.LIGHT));
+        });
+    }
+
+    @Test
+    void concurrentSummaryUpdatesLoseNoCounts() {
+        assertTimeoutPreemptively(LIMIT, () -> {
+            ChamberSummaryTracker summaries = new ChamberSummaryTracker();
+            int threads = 16, changes = 5_000;
+            CountDownLatch go = new CountDownLatch(1);
+            try (ExecutorService pool = Executors.newFixedThreadPool(threads)) {
+                for (int i = 0; i < threads; i++) {
+                    boolean alerts = i % 2 == 0;
+                    pool.submit(() -> {
+                        go.await();
+                        for (int j = 0; j < changes; j++) {
+                            if (alerts) summaries.onAlert(new Alert("CH1", "Tomato", "x", Severity.WARNING));
+                            else summaries.onActivated("CH1", Devices.GROW_LIGHT, "x");
+                        }
+                        return null;
+                    });
+                }
+                go.countDown();
+            }
+            String line = summaries.lines().getFirst();
+            assertTrue(line.contains("Alerts=40000, Actions=40000"), line);
         });
     }
 }

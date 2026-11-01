@@ -10,8 +10,12 @@ import java.nio.file.Path;
 import java.util.List;
 import org.example.alert.Alert;
 import org.example.alert.AlertService;
+import org.example.alert.Severity;
+import org.example.report.ArchiveReport;
 import org.example.report.ChamberSummaryTracker;
+import org.example.report.FacilitySnapshotFactory;
 import org.example.report.ReportService;
+import org.example.report.Utf8ReportWriter;
 import org.example.resource.ResourceMeter;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -22,9 +26,12 @@ class ReportPersistenceTest {
     Path dir;
 
     private ReportService service() {
-        AlertService alerts = new AlertService(List.of());
-        alerts.raise(new Alert("CH1", "Tomato", "CH1 Tomato High Temp"));
-        ReportService reports = new ReportService(alerts, new ResourceMeter(), new ChamberSummaryTracker());
+        AlertService alerts = Chambers.alerts(List.of());
+        alerts.raise(new Alert("CH1", "Tomato", "CH1 Tomato High Temp", Severity.WARNING));
+        FacilitySnapshotFactory snapshots = new FacilitySnapshotFactory(
+                alerts, new ResourceMeter(), new ChamberSummaryTracker());
+        ReportService reports = new ReportService(alerts, snapshots::create, snapshots::recordActivity,
+                new Utf8ReportWriter(), System.out::println);
         reports.archiveAlerts();
         return reports;
     }
@@ -38,7 +45,7 @@ class ReportPersistenceTest {
     @Test
     void reportIsWrittenWithTheLegacyLayout() throws Exception {
         Path file = dir.resolve("archive").resolve("daily_report.txt");
-        service().saveArchiveReport(file);
+        service().save(new ArchiveReport(), file);
         List<String> lines = Files.readAllLines(file);
         assertEquals("===== DAILY REPORT =====", lines.get(0));
         assertTrue(lines.get(1).startsWith("Timestamp: "));
@@ -48,7 +55,7 @@ class ReportPersistenceTest {
     @Test
     void unwritableDestinationThrows() throws Exception {
         Path file = unwritable();
-        assertThrows(IOException.class, () -> service().saveArchiveReport(file));
+        assertThrows(IOException.class, () -> service().save(new ArchiveReport(), file));
     }
 
     @Test

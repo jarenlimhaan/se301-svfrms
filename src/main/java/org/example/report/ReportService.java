@@ -1,16 +1,10 @@
 package org.example.report;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import org.example.alert.Alert;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 import org.example.alert.AlertLedger;
-import org.example.resource.UsageTotals;
 
 /**
  * Facade for end-of-run reporting: archiving alerts, printing the daily report and saving the archive
@@ -18,30 +12,34 @@ import org.example.resource.UsageTotals;
  */
 public final class ReportService {
     private final AlertLedger alerts;
-    private final UsageTotals meter;
-    private final ChamberSummaries summaries;
-    private final List<String> activity = Collections.synchronizedList(new ArrayList<>());
+    private final Supplier<FacilitySnapshot> snapshots;
+    private final Consumer<String> activity;
+    private final ReportWriter writer;
+    private final Consumer<String> console;
 
-    public ReportService(AlertLedger alerts, UsageTotals meter, ChamberSummaries summaries) {
+    public ReportService(AlertLedger alerts, Supplier<FacilitySnapshot> snapshots, Consumer<String> activity,
+                         ReportWriter writer, Consumer<String> console) {
         this.alerts = alerts;
-        this.meter = meter;
-        this.summaries = summaries;
+        this.snapshots = snapshots;
+        this.activity = activity;
+        this.writer = writer;
+        this.console = console;
     }
 
     public void archiveAlerts() {
         int moved = alerts.archiveActive().size();
         if (moved > 0) {
-            activity.add("Archived " + moved + " alerts");
-            System.out.println("Archiving alerts... " + moved + " moved to archive.");
+            activity.accept("Archived " + moved + " alerts");
+            console.accept("Archiving alerts... " + moved + " moved to archive.");
         } else {
-            activity.add("No alerts to archive");
-            System.out.println("Archiving alerts... no active alerts to archive.");
+            activity.accept("No alerts to archive");
+            console.accept("Archiving alerts... no active alerts to archive.");
         }
     }
 
-    public void generateDailyReport() {
-        new DailyReport().render(snapshot()).forEach(System.out::println);
-        activity.add("Daily Report");
+    public void print(Report report, String activity) {
+        report.render(snapshots.get()).forEach(console);
+        this.activity.accept(activity);
     }
 
     /**
@@ -49,18 +47,7 @@ public final class ReportService {
      *
      * @throws IOException if the report could not be written; the caller decides how to fail
      */
-    public void saveArchiveReport(Path file) throws IOException {
-        Files.createDirectories(file.toAbsolutePath().getParent());
-        Files.write(file, new ArchiveReport().render(snapshot()), StandardCharsets.UTF_8);
-        System.out.println("Archive report saved to: " + file.toAbsolutePath());
-    }
-
-    private FacilitySnapshot snapshot() {
-        List<String> activityCopy;
-        synchronized (activity) {
-            activityCopy = List.copyOf(activity);
-        }
-        return new FacilitySnapshot(Instant.now(), alerts.generatedCount(), alerts.activeCount(), meter.water(),
-                meter.energy(), activityCopy, summaries.lines(), alerts.archived().stream().map(Alert::message).toList());
+    public void save(Report report, Path file) throws IOException {
+        writer.write(file, report.render(snapshots.get()));
     }
 }

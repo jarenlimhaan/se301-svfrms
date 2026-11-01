@@ -5,18 +5,19 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 /**
- * An immutable set of independent listeners. Each is notified in turn; one that throws is logged
- * to stderr and counted, and the rest are still notified, so a faulty listener can never stop
- * the thread that published the event or starve the other listeners.
+ * An immutable set of independent listeners. Each is notified in turn; a listener runtime failure
+ * is logged and counted, and the rest are still notified. JVM-level {@link Error}s are not swallowed.
  */
 public final class Listeners<L> {
     private final String channel;
     private final List<L> listeners;
     private final AtomicInteger failures = new AtomicInteger();
+    private final Consumer<String> errors;
 
-    public Listeners(String channel, List<L> listeners) {
+    public Listeners(String channel, List<L> listeners, Consumer<String> errors) {
         this.channel = channel;
         this.listeners = List.copyOf(listeners);
+        this.errors = errors;
     }
 
     /** Calls {@code event} on every listener; {@code source} (e.g. the chamber) is used in failure logs. */
@@ -26,7 +27,7 @@ public final class Listeners<L> {
                 event.accept(listener);
             } catch (RuntimeException e) {
                 failures.incrementAndGet();
-                System.err.println("[" + source + "][" + channel + "] listener "
+                errors.accept("[" + source + "][" + channel + "] listener "
                         + listener.getClass().getSimpleName() + " failed: " + e);
             }
         }

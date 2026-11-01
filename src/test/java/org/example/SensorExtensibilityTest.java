@@ -19,7 +19,6 @@ import org.example.monitoring.ResponsePolicy;
 import org.example.monitoring.SensorProcessor;
 import org.example.resource.ResourceMeter;
 import org.example.sensor.ChamberRegistry;
-import org.example.sensor.SensorLog;
 import org.example.sensor.SensorType;
 import org.example.simulation.ChamberSimulation;
 import org.example.simulation.RandomReadingSource;
@@ -67,11 +66,11 @@ class SensorExtensibilityTest {
 
     @Test
     void unresponsiveSensorRaisesCriticalSensorFailure() throws Exception {
-        AlertService alerts = new AlertService(List.of());
+        AlertService alerts = Chambers.alerts(List.of());
         ChamberRegistry chambers = new ChamberRegistry();
         List<String> devices = new ArrayList<>();
-        SensorProcessor processor = new SensorProcessor(CropCatalog.defaultRegistry(), chambers, new SensorLog(), alerts,
-                new ResourceMeter(), ResponsePolicy.standard(), (chamber, device, trigger) -> devices.add(device.name()));
+        SensorProcessor processor = new SensorProcessor(CropCatalog.defaultRegistry(), chambers, alerts,
+                new ResourceMeter(), ResponsePolicy.standard(), (chamber, device) -> devices.add(device.name()));
         ReadingSource humidityDown = (chamber, sensor) ->
                 sensor == SensorType.HUMIDITY ? OptionalDouble.empty() : OptionalDouble.of(sensor.initialValue());
 
@@ -84,7 +83,7 @@ class SensorExtensibilityTest {
             assertEquals("CH1 Sensor Failure: no Humidity reading", alert.message());
             assertEquals(Severity.CRITICAL, alert.severity());
         }
-        assertEquals(SensorType.HUMIDITY.initialValue(), chambers.state("CH1").get(SensorType.HUMIDITY));
+        assertEquals(SensorType.HUMIDITY.initialValue(), Chambers.read(chambers.control("CH1"), SensorType.HUMIDITY));
         assertTrue(devices.isEmpty());
     }
 

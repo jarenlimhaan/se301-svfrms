@@ -1,24 +1,29 @@
 package org.example.resource;
 
+import java.util.EnumMap;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /** Facility-wide water (L) and energy (kWh) counters, safe to update from any thread. Usage only ever grows. */
 public final class ResourceMeter implements UsageRecorder, UsageTotals {
-    private final AtomicInteger water = new AtomicInteger();
-    private final AtomicInteger energy = new AtomicInteger();
+    private final Map<Resource, AtomicInteger> totals = new EnumMap<>(Resource.class);
+
+    public ResourceMeter() {
+        for (Resource resource : Resource.values()) totals.put(resource, new AtomicInteger());
+    }
 
     @Override
     public void record(Usage usage) {
-        (usage.resource() == Resource.WATER ? water : energy).addAndGet(usage.amount());
+        totals.get(usage.resource()).addAndGet(usage.amount());
     }
 
-    public void addWater(int litres) { record(new Usage(Resource.WATER, litres)); }
-
-    public void addEnergy(int kwh) { record(new Usage(Resource.ENERGY, kwh)); }
+    @Override
+    public int total(Resource resource) { return totals.get(resource).get(); }
 
     @Override
-    public int water() { return water.get(); }
-
-    @Override
-    public int energy() { return energy.get(); }
+    public Map<Resource, Integer> totals() {
+        Map<Resource, Integer> snapshot = new EnumMap<>(Resource.class);
+        totals.forEach((resource, amount) -> snapshot.put(resource, amount.get()));
+        return Map.copyOf(snapshot);
+    }
 }

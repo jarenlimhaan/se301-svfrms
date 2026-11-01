@@ -21,7 +21,7 @@ class ClosableBoundedQueueTest {
     private static CompletableFuture<Void> putAsync(ClosableBoundedQueue<String> queue, String item) {
         return CompletableFuture.runAsync(() -> {
             try {
-                queue.put(item);
+                queue.put(item, LIMIT);
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
@@ -32,8 +32,8 @@ class ClosableBoundedQueueTest {
     void fifoAndBlocksWhenFull() {
         assertTimeoutPreemptively(LIMIT, () -> {
             ClosableBoundedQueue<String> queue = new ClosableBoundedQueue<>(2);
-            queue.put("a");
-            queue.put("b");
+            assertTrue(queue.put("a", LIMIT));
+            assertTrue(queue.put("b", LIMIT));
             CompletableFuture<Void> third = putAsync(queue, "c");
             TimeUnit.MILLISECONDS.sleep(200);
             assertTrue(!third.isDone(), "put waits while the queue is full");
@@ -47,10 +47,10 @@ class ClosableBoundedQueueTest {
     @Test
     void closeLetsTheConsumerDrainThenReturnsNull() throws Exception {
         ClosableBoundedQueue<String> queue = new ClosableBoundedQueue<>(3);
-        queue.put("a");
-        queue.put("b");
+        assertTrue(queue.put("a", LIMIT));
+        assertTrue(queue.put("b", LIMIT));
         queue.close();
-        assertThrows(IllegalStateException.class, () -> queue.put("late"), "no request slips in after close");
+        assertThrows(IllegalStateException.class, () -> queue.put("late", LIMIT), "no request slips in after close");
         assertEquals("a", queue.take());
         assertEquals("b", queue.take());
         assertNull(queue.take());
@@ -77,7 +77,7 @@ class ClosableBoundedQueueTest {
     void abortWakesEveryBlockedProducerWithTheCause() {
         assertTimeoutPreemptively(LIMIT, () -> {
             ClosableBoundedQueue<String> queue = new ClosableBoundedQueue<>(1);
-            queue.put("full");
+            assertTrue(queue.put("full", LIMIT));
             List<CompletableFuture<Void>> producers = List.of(putAsync(queue, "x"), putAsync(queue, "y"), putAsync(queue, "z"));
             TimeUnit.MILLISECONDS.sleep(200);
             producers.forEach(p -> assertTrue(!p.isDone()));

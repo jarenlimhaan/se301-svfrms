@@ -18,18 +18,16 @@ import org.example.resource.ResourceMeter;
 import org.example.resource.Usage;
 import org.example.sensor.ChamberRegistry;
 import org.example.sensor.ChamberState;
-import org.example.sensor.SensorLog;
 import org.example.sensor.SensorType;
 import org.junit.jupiter.api.Test;
 
 /** Finding 5: invalid configuration is rejected; invalid readings raise Sensor Failure alerts. */
 class ValidationTest {
     private final ChamberRegistry chambers = new ChamberRegistry();
-    private final AlertService alerts = new AlertService(List.of());
+    private final AlertService alerts = Chambers.alerts(List.of());
     private final ResourceMeter meter = new ResourceMeter();
     private final List<String> requested = new ArrayList<>();
-    private final SensorProcessor processor = new SensorProcessor(CropCatalog.defaultRegistry(), chambers, new SensorLog(),
-            alerts, meter, ResponsePolicy.standard(), (chamber, device, trigger) -> requested.add(device.name()));
+    private final SensorProcessor processor = new SensorProcessor(CropCatalog.defaultRegistry(), chambers, alerts, meter, ResponsePolicy.standard(), (chamber, device) -> requested.add(device.name()));
 
     private List<String> alertMessages() {
         alerts.archiveActive();
@@ -62,8 +60,8 @@ class ValidationTest {
         assertThrows(NullPointerException.class, () -> new Usage(null, 1));
         assertThrows(IllegalArgumentException.class, () -> CropProfile.builder("X").cost(SensorType.TEMPERATURE,
                 org.example.sensor.Direction.HIGH, Resource.ENERGY, -10));
-        assertThrows(IllegalArgumentException.class, () -> meter.addWater(-2));
-        assertThrows(IllegalArgumentException.class, () -> meter.addEnergy(-1));
+        assertThrows(IllegalArgumentException.class, () -> meter.record(new Usage(Resource.WATER, -2)));
+        assertThrows(IllegalArgumentException.class, () -> meter.record(new Usage(Resource.ENERGY, -1)));
         assertEquals(0, meter.water());
     }
 
@@ -73,7 +71,7 @@ class ValidationTest {
         assertThrows(IllegalArgumentException.class, () -> state.set(SensorType.TEMPERATURE, Double.NaN));
         assertThrows(IllegalArgumentException.class, () -> state.set(SensorType.HUMIDITY, 101));
         assertThrows(IllegalArgumentException.class, () -> state.adjust(SensorType.LIGHT, Double.POSITIVE_INFINITY, 1000));
-        assertEquals(24.0, state.get(SensorType.TEMPERATURE));
+        assertEquals(24.0, Chambers.read(state, SensorType.TEMPERATURE));
     }
 
     @Test
@@ -87,8 +85,9 @@ class ValidationTest {
                 "CH1 Sensor Failure: invalid Humidity reading 150.0",
                 "CH1 Sensor Failure: invalid Light reading -5.0",
                 "CH1 Sensor Failure: invalid Soil reading Infinity"), alertMessages());
-        ChamberState state = chambers.state("CH1");
-        for (SensorType sensor : SensorType.values()) assertEquals(sensor.initialValue(), state.get(sensor));
+        for (SensorType sensor : SensorType.values()) {
+            assertEquals(sensor.initialValue(), Chambers.read(chambers.control("CH1"), sensor));
+        }
         assertTrue(requested.isEmpty(), "an invalid reading never triggers a device");
         assertEquals(0, meter.water() + meter.energy(), "and never costs resources");
     }

@@ -13,14 +13,17 @@ import org.example.crop.CropRegistry;
 import org.example.device.ConsoleControlPrinter;
 import org.example.device.ControlDispatcher;
 import org.example.device.DispatchStats;
-import org.example.device.StaleRequestPolicy;
+import org.example.device.RequestExecutor;
 import org.example.monitoring.ResponsePolicy;
 import org.example.monitoring.SensorProcessor;
+import org.example.report.ArchiveReport;
 import org.example.report.ChamberSummaryTracker;
+import org.example.report.DailyReport;
+import org.example.report.FacilitySnapshotFactory;
 import org.example.report.ReportService;
+import org.example.report.Utf8ReportWriter;
 import org.example.resource.ResourceMeter;
 import org.example.sensor.ChamberRegistry;
-import org.example.sensor.SensorLog;
 import org.example.simulation.ChamberSimulation;
 import org.example.simulation.RandomReadingSource;
 import org.example.simulation.ReadingSource;
@@ -46,8 +49,6 @@ public final class SVFRMS {
     private static final int CONTROL_QUEUE_CAPACITY = 5;
     private static final int CYCLES_PER_CHAMBER = 20;
     private static final Duration CONTROL_SHUTDOWN_TIMEOUT = Duration.ofSeconds(30);
-    /** Legacy behaviour: a queued device runs even if a newer reading arrived. SKIP revalidates instead. */
-    private static final StaleRequestPolicy STALE_REQUESTS = StaleRequestPolicy.EXECUTE;
 
     private SVFRMS() {}
 
@@ -58,12 +59,17 @@ public final class SVFRMS {
 
     /** Runs the whole facility once and returns the exit status (never calls {@code System.exit}). */
     static int run(String[] args, Path reportFile) throws InterruptedException {
+        return run(args, reportFile, RandomReadingSource.legacy());
+    }
+
+    /** As {@link #run(String[], Path)}, with the sensor feed supplied (tests use this to inject failures). */
+    static int run(String[] args, Path reportFile, ReadingSource readings) throws InterruptedException {
         CommandLine cli;
         CropRegistry crops;
         try {
             cli = CommandLine.parse(args);
             crops = cli.cropRegistry();
-        } catch (IllegalArgumentException | IOException e) {
+        } catch (IllegalArgumentException e) {
             System.err.println("ERROR: " + e.getMessage());
             System.err.println(CommandLine.USAGE);
             return EXIT_BAD_ARGUMENTS;
@@ -75,25 +81,27 @@ public final class SVFRMS {
         cli.chambers().values().stream().filter(c -> crops.find(c).isEmpty()).distinct().forEach(c ->
                 System.out.println("WARNING: no crop profile for '" + c + "'; only facility-wide checks apply. Known: " + crops.names()));
 
+        return runConfigured(cli, crops, reportFile, readings);
+    }
+
+    private static int runConfigured(CommandLine cli, CropRegistry crops, Path reportFile, ReadingSource readings)
+            throws InterruptedException {
         ResourceMeter meter = new ResourceMeter();
         ChamberSummaryTracker summaries = new ChamberSummaryTracker();
         AlertListener alertPrinter = cli.severityAlerts() ? new SeverityAlertPrinter() : new ConsoleAlertPrinter();
-        AlertService alerts = new AlertService(List.of(summaries, alertPrinter));
+        AlertService alerts = new AlertService(List.of(summaries, alertPrinter), System.err::println);
         ChamberRegistry chamberStates = new ChamberRegistry();
-        ReportService reports = new ReportService(alerts, meter, summaries);
-        ReadingSource readings = RandomReadingSource.legacy();
+        FacilitySnapshotFactory snapshots = new FacilitySnapshotFactory(alerts, meter, summaries);
+        ReportService reports = new ReportService(alerts, snapshots::create, snapshots::recordActivity,
+                new Utf8ReportWriter(), System.out::println);
+        DailyReport dailyReport = new DailyReport();
+        ArchiveReport archiveReport = new ArchiveReport();
 
-        ControlDispatcher dispatcher = new ControlDispatcher(chamberStates, CONTROL_QUEUE_CAPACITY,
-                List.of(summaries, new ConsoleControlPrinter()), CONTROL_SHUTDOWN_TIMEOUT, STALE_REQUESTS);
+        RequestExecutor requests = new RequestExecutor(chamberStates,
+                List.of(summaries, new ConsoleControlPrinter()), System.err::println);
+        ControlDispatcher dispatcher = new ControlDispatcher(requests, CONTROL_QUEUE_CAPACITY, CONTROL_SHUTDOWN_TIMEOUT);
         try (dispatcher) {
-            dispatcher.start();
-            SensorProcessor processor = new SensorProcessor(crops, chamberStates, new SensorLog(), alerts, meter,
-                    ResponsePolicy.standard(), dispatcher);
-            List<ChamberSimulation> simulations = new ArrayList<>();
-            cli.chambers().forEach((chamber, crop) -> simulations.add(
-                    new ChamberSimulation(chamber, crop, CYCLES_PER_CHAMBER, processor, readings, meter)));
-            // Waits for every chamber; throws (and no report is written) unless all completed every cycle.
-            SimulationRunner.runAll(simulations);
+            runChambers(cli, crops, readings, meter, alerts, chamberStates, dispatcher);
         } catch (SimulationFailedException | IllegalStateException e) {
             // IllegalStateException: the control worker failed or lost requests (see ControlDispatcher.close).
             System.err.println("ERROR: run failed, no report written: " + e.getMessage());
@@ -101,16 +109,33 @@ public final class SVFRMS {
             return EXIT_RUN_FAILED;
         } // drains pending device requests, then stops the control thread
         reportProblems(dispatcher.stats(), alerts.listenerFailures());
+        return writeReports(reports, dailyReport, archiveReport, reportFile);
+    }
 
+    private static void runChambers(CommandLine cli, CropRegistry crops, ReadingSource readings, ResourceMeter meter,
+                                    AlertService alerts, ChamberRegistry chamberStates, ControlDispatcher dispatcher)
+            throws SimulationFailedException, InterruptedException {
+        dispatcher.start();
+        SensorProcessor processor = new SensorProcessor(crops, chamberStates, alerts, meter,
+                ResponsePolicy.standard(), dispatcher);
+        List<ChamberSimulation> simulations = new ArrayList<>();
+        cli.chambers().forEach((chamber, crop) -> simulations.add(
+                new ChamberSimulation(chamber, crop, CYCLES_PER_CHAMBER, processor, readings, meter)));
+        SimulationRunner.runAll(simulations);
+    }
+
+    private static int writeReports(ReportService reports, DailyReport dailyReport, ArchiveReport archiveReport,
+                                    Path reportFile) {
         // Run in a fixed order: the legacy code raced these two threads, so the report's numbers varied run to run.
         reports.archiveAlerts();
-        reports.generateDailyReport();
+        reports.print(dailyReport, "Daily Report");
         System.out.println("System finished sensor processing.");
         try {
-            reports.saveArchiveReport(reportFile);
+            reports.save(archiveReport, reportFile);
+            System.out.println("Archive report saved to: " + reportFile.toAbsolutePath());
         } catch (IOException e) {
-            // Legacy message prefix; the exception type says why (e.g. FileAlreadyExistsException, AccessDeniedException).
-            System.out.println("Could not save archive report: " + e.getClass().getSimpleName() + " " + e.getMessage());
+            System.out.println("Could not save archive report: " + e.getMessage()); // legacy text
+            System.err.println("  cause: " + e); // the exception type says why (e.g. FileAlreadyExistsException)
             return EXIT_ARCHIVE_NOT_SAVED;
         }
         return EXIT_OK;
@@ -118,9 +143,9 @@ public final class SVFRMS {
 
     /** Tells the operator (on stderr) about failures that were isolated during the run. Silent when all went well. */
     private static void reportProblems(DispatchStats stats, int alertListenerFailures) {
-        if (stats.hasProblems() || stats.skipped() > 0 || alertListenerFailures > 0) {
+        if (stats.hasProblems() || alertListenerFailures > 0) {
             System.err.println("WARNING: device requests: " + stats.executed() + " executed, " + stats.failed()
-                    + " failed, " + stats.skipped() + " skipped as stale; listener failures: "
+                    + " failed; listener failures: "
                     + (stats.listenerFailures() + alertListenerFailures) + " (details above)");
         }
     }

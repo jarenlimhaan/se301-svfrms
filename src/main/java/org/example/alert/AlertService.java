@@ -2,6 +2,7 @@ package org.example.alert;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 import org.example.support.Listeners;
 
 /**
@@ -15,8 +16,8 @@ public final class AlertService implements AlertSink, AlertLedger {
     private final List<Alert> archived = new ArrayList<>();
     private int generated;
 
-    public AlertService(List<AlertListener> listeners) {
-        this.listeners = new Listeners<>("ALERT", listeners);
+    public AlertService(List<AlertListener> listeners, Consumer<String> errors) {
+        this.listeners = new Listeners<>("ALERT", listeners, errors);
     }
 
     @Override
