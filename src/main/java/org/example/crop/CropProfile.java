@@ -55,6 +55,7 @@ public final class CropProfile {
         return ignored.contains(breach);
     }
 
+    /** Builds an immutable {@link CropProfile}, starting from the facility-wide light and nutrient defaults. */
     public static final class Builder {
         private final String name;
         private final Map<SensorType, Range> ranges = new EnumMap<>(SensorType.class);

@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.example.alert.AlertFormats;
 import org.example.crop.CropCatalog;
 import org.example.crop.CropProfile;
 import org.example.crop.CropRegistry;
@@ -18,21 +19,22 @@ import org.example.crop.CropSpecParser;
  * @param chambers    chamber name to crop name, in order; the legacy four chambers if none were given
  * @param addedCrops  crops defined with {@code --add-crop} (replacing any same-named crop)
  * @param removedCrops crop names given with {@code --remove-crop}
- * @param severityAlerts whether alerts are printed with their severity ({@code --alert-format=severity})
+ * @param alertFormat the console alert format name ({@code --alert-format}); see {@link AlertFormats}
  * @param help        whether {@code --help} was given
  */
 record CommandLine(Map<String, String> chambers, List<CropProfile> addedCrops, List<String> removedCrops,
-                   boolean severityAlerts, boolean help) {
+                   String alertFormat, boolean help) {
 
     static final String USAGE = """
             Usage: java -jar run.jar [options] [CHAMBER=Crop ...]
               CHAMBER=Crop             assign a crop to a chamber, e.g. CH5=Kale (default: CH1..CH4 legacy crops)
               --add-crop=SPEC          add or replace a crop, e.g. --add-crop="Okra:temperature=24..30,soil=50..70"
               --remove-crop=Name       remove a crop from the catalog for this run
-              --alert-format=FORMAT    legacy (default: [CH1][Tomato][ALERT] ...) or severity (CRITICAL: ...)
+              --alert-format=FORMAT    console alert format, one of %s (default: %s)
               --help                   show this message
             SPEC is Name:sensor=min..max,... with sensors temperature, humidity, soil, light, nutrient.
-            Exit status: 0 success, 1 run failed, 2 archive report not saved, 3 invalid arguments.""";
+            Exit status: 0 success, 1 run failed, 2 archive report not saved, 3 invalid arguments."""
+            .formatted(AlertFormats.names(), AlertFormats.DEFAULT);
 
     CommandLine {
         chambers = Collections.unmodifiableMap(new LinkedHashMap<>(chambers.isEmpty() ? CropCatalog.legacyChambers() : chambers));
@@ -46,7 +48,7 @@ record CommandLine(Map<String, String> chambers, List<CropProfile> addedCrops, L
         List<CropProfile> added = new ArrayList<>();
         List<String> removed = new ArrayList<>();
         boolean help = false;
-        boolean severityAlerts = false;
+        String alertFormat = AlertFormats.DEFAULT;
         for (String arg : args) {
             if (arg.equals("--help") || arg.equals("-h")) {
                 help = true;
@@ -55,11 +57,7 @@ record CommandLine(Map<String, String> chambers, List<CropProfile> addedCrops, L
             } else if (arg.startsWith("--remove-crop=")) {
                 removed.add(value(arg));
             } else if (arg.startsWith("--alert-format=")) {
-                severityAlerts = switch (value(arg)) {
-                    case "legacy" -> false;
-                    case "severity" -> true;
-                    default -> throw new IllegalArgumentException("--alert-format must be legacy or severity: " + arg);
-                };
+                alertFormat = AlertFormats.requireKnown(value(arg));
             } else if (arg.startsWith("--")) {
                 throw new IllegalArgumentException("Unknown option: " + arg);
             } else {
@@ -70,7 +68,7 @@ record CommandLine(Map<String, String> chambers, List<CropProfile> addedCrops, L
                 chambers.put(parts[0].trim(), parts[1].trim());
             }
         }
-        return new CommandLine(chambers, added, removed, severityAlerts, help);
+        return new CommandLine(chambers, added, removed, alertFormat, help);
     }
 
     /** The built-in catalog with this run's additions applied, then its removals. */

@@ -18,9 +18,6 @@ public final class ResourceMeter implements UsageRecorder, UsageTotals {
     }
 
     @Override
-    public int total(Resource resource) { return totals.get(resource).get(); }
-
-    @Override
     public Map<Resource, Integer> totals() {
         Map<Resource, Integer> snapshot = new EnumMap<>(Resource.class);
         totals.forEach((resource, amount) -> snapshot.put(resource, amount.get()));

@@ -4,20 +4,20 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
-import org.example.alert.AlertLedger;
+import org.example.alert.AlertArchive;
 
 /**
  * Facade for end-of-run reporting: archiving alerts, printing the daily report and saving the archive
  * file. Callers make three calls instead of coordinating alerts, usage totals, summaries and reports.
  */
 public final class ReportService {
-    private final AlertLedger alerts;
+    private final AlertArchive alerts;
     private final Supplier<FacilitySnapshot> snapshots;
     private final Consumer<String> activity;
     private final ReportWriter writer;
     private final Consumer<String> console;
 
-    public ReportService(AlertLedger alerts, Supplier<FacilitySnapshot> snapshots, Consumer<String> activity,
+    public ReportService(AlertArchive alerts, Supplier<FacilitySnapshot> snapshots, Consumer<String> activity,
                          ReportWriter writer, Consumer<String> console) {
         this.alerts = alerts;
         this.snapshots = snapshots;

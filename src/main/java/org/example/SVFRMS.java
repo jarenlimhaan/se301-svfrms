@@ -5,10 +5,9 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import org.example.alert.AlertFormats;
 import org.example.alert.AlertListener;
 import org.example.alert.AlertService;
-import org.example.alert.ConsoleAlertPrinter;
-import org.example.alert.SeverityAlertPrinter;
 import org.example.crop.CropRegistry;
 import org.example.device.ConsoleControlPrinter;
 import org.example.device.ControlDispatcher;
@@ -88,7 +87,7 @@ public final class SVFRMS {
             throws InterruptedException {
         ResourceMeter meter = new ResourceMeter();
         ChamberSummaryTracker summaries = new ChamberSummaryTracker();
-        AlertListener alertPrinter = cli.severityAlerts() ? new SeverityAlertPrinter() : new ConsoleAlertPrinter();
+        AlertListener alertPrinter = AlertFormats.printer(cli.alertFormat());
         AlertService alerts = new AlertService(List.of(summaries, alertPrinter), System.err::println);
         ChamberRegistry chamberStates = new ChamberRegistry();
         FacilitySnapshotFactory snapshots = new FacilitySnapshotFactory(alerts, meter, summaries);
